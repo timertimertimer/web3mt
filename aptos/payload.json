@@ -1,0 +1,15 @@
+{
+  "function": "0xd520d8669b0a3de23119898dcdff3e0a27910db247663646ad18cf16e44c6f5::coin_listing::batch_list_token_v2",
+  "type_arguments": [
+    "0x1::object::ObjectCore",
+    "0x1::aptos_coin::AptosCoin"
+  ],
+  "arguments": [
+    [
+    ],
+    "0xb3e77042cc302994d7ae913d04286f61ecd2dbc4a73f6c7dbcb4333f3524b9d7",
+    [
+    ]
+  ],
+  "type": "entry_function_payload"
+}
