@@ -11,7 +11,7 @@ def not_error_filter(record):
 
 
 logger.remove()
-format_string = "<white>{time:HH:mm:ss}</white> | <level>{level: <8}</level> | <level>{message}</level>"
+format_string = "<white>{time:HH:mm:ss}</white> | <level>{level: <8}</level> | <cyan>{name}</cyan>:<cyan>{line}</cyan> - <level>{message}</level>"
 logger.add(sys.stderr, format=format_string)
 logger.add("errors.log", filter=error_filter, format=format_string)
 logger.add("general.log", filter=not_error_filter, format=format_string)

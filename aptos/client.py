@@ -3,7 +3,7 @@ from aptos_sdk.account import Account
 from aptos_sdk.async_client import RestClient, ResourceNotFound
 
 from logger import logger
-from utils import read_txt
+from utils import read_txt, Z8
 
 
 class AptosClient(RestClient):
@@ -23,7 +23,8 @@ class AptosClient(RestClient):
                 logger.success(f"{str(self.account_.address())[:6]} | Sent transaction {txn_hash}")
                 return sequence
             except Exception as e:
-                if "Transaction already in mempool with a different payload" in str(e) or "SEQUENCE_NUMBER_TOO_OLD" in str(e):
+                if "Transaction already in mempool with a different payload" in str(
+                        e) or "SEQUENCE_NUMBER_TOO_OLD" in str(e):
                     sequence += 1
                     continue
                 logger.error(f"{str(self.account_.address())[:6]} | {e}")
@@ -31,7 +32,9 @@ class AptosClient(RestClient):
 
     async def balance(self, ledger_version: int = None) -> int:
         try:
-            return await super().account_balance(self.account_.address())
+            balance = await super().account_balance(self.account_.address()) / Z8
+            logger.info(f'{str(self.account_.address())[:6]} | {balance} APT')
+            return balance
         except ResourceNotFound:
             return 0
 

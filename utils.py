@@ -1,10 +1,8 @@
 import asyncio
 import asyncio.exceptions
-import os.path
 import re
 import json
 import configparser
-from pprint import pprint
 from logger import logger
 from pathlib import Path
 
@@ -16,8 +14,10 @@ from web3.eth import AsyncEth
 
 PRICE_FACTOR = 1.1
 INCREASE_GAS = 1.1
-
+Z8 = 10 ** 8
+Z18 = 10 ** 18
 config = configparser.ConfigParser()
+MWD = Path(__file__).parent
 
 
 def get_config_section(section: str) -> dict:
@@ -40,17 +40,13 @@ def find_keys(input_data: str) -> str | None:
 
 def get_accounts(file_path: str = None) -> list[str]:
     accounts = []
-    with open(file_path or 'accounts.txt', 'r', encoding='utf-8') as file:
+    with open(file_path or MWD / 'evm' / 'accounts.txt', 'r', encoding='utf-8') as file:
         for row in file:
             target_private_key = find_keys(input_data=row.strip())
 
             if target_private_key:
                 accounts.append(target_private_key)
     return accounts
-
-
-def get_address(private_key: str) -> str | None:
-    return Account.from_key(private_key=private_key).address
 
 
 async def get_web3(node_url: str):

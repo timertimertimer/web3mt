@@ -1,6 +1,10 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, Field
 from decimal import Decimal
 from typing import Union
+
+from better_automation.discord import DiscordAccount
+from better_automation.twitter import TwitterAccount
+from eth_account.signers.local import LocalAccount
 
 
 @dataclass
@@ -122,6 +126,33 @@ class Network:
 
     def __str__(self):
         return f'{self.name}'
+
+
+class DiscordAccountModified(DiscordAccount):
+    auth_token: str = Field(default=None, pattern=r"^[A-Za-z0-9+._-]{70}$|^[A-Za-z0-9+._-]{72}$")
+
+
+class Profile:
+    user_agent: str = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+
+    def __init__(
+            self,
+            twitter: TwitterAccount,
+            discord: DiscordAccountModified,
+            evm_account: LocalAccount,
+            proxy: str = None,
+            email: str = None,
+            user_agent: str = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+    ):
+        self.twitter = twitter
+        self.discord = discord
+        self.evm_account = evm_account
+        self.proxy = proxy
+        self.email = email
+        self.user_agent = user_agent
+
+    def __repr__(self):
+        return f'Profile({self.twitter}, {self.discord}, {self.evm_account.address}, {self.proxy}, {self.email}, {self.user_agent})'
 
 
 Ethereum = Network(

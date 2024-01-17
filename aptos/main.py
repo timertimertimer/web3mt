@@ -4,19 +4,19 @@ from aptos.utils import get_accounts, get_config_section, logger
 from client import AptosClient
 from utils import read_json
 
-Z8 = 10 ** 8
+aptos_config = get_config_section('aptos')
 
 
-async def main():
+async def bluemove_sell_nfts():
     tasks = []
-    aptos_config = get_config_section('aptos')
     amount_percentage = float(aptos_config['amount_percentage'])
     price = float(aptos_config['price'])
     collection_id = aptos_config['collection_id']
     for account in get_accounts():
         client = AptosClient(account)
         balance = await client.get_storage_ids(collection_id)
-        for data in balance[:int(len(balance) * amount_percentage / 100) - 1]:
+        logger.info(f"{client.account_.address()} | Balance of aptmap - {balance}")
+        for data in balance[:int(len(balance) * amount_percentage / 100)]:
             payload = read_json('payload.json')
             token_name = data['current_token_data']['token_name']
             logger.info(f'Selling {token_name}')
@@ -27,5 +27,13 @@ async def main():
     await asyncio.gather(*tasks)
 
 
+async def aptmap_balance():
+    collection_id = aptos_config['collection_id']
+    for account in get_accounts():
+        client = AptosClient(account)
+        balance = await client.get_storage_ids(collection_id)
+        logger.info(f"{str(client.account_.address())[:6]} | Balance of aptmap - {len(balance)}")
+
+
 if __name__ == '__main__':
-    asyncio.run(main())
+    asyncio.run(aptmap_balance())
