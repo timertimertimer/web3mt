@@ -40,7 +40,11 @@ def find_keys(input_data: str) -> str | None:
 
 def get_accounts(file_path: str = None) -> list[str]:
     accounts = []
-    with open(file_path or MWD / 'evm' / 'accounts.txt', 'r', encoding='utf-8') as file:
+    accounts_path = MWD / 'evm' / 'accounts.txt'
+    if not accounts_path.exists():
+        accounts_path.touch()
+        return accounts
+    with open(file_path or accounts_path, 'r', encoding='utf-8') as file:
         for row in file:
             target_private_key = find_keys(input_data=row.strip())
 
