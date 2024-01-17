@@ -1,0 +1,10 @@
+aiosqlite
+web3
+eth_account
+python-dotenv
+better_automation
+better_proxy
+aiohttp
+aptos_sdk
+loguru
+pytz
