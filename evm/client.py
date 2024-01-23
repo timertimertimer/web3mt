@@ -1,4 +1,5 @@
 from aiohttp import ClientSession
+from eth_account import Account
 from web3 import Web3
 from typing import Optional
 from web3.eth import AsyncEth
@@ -11,22 +12,20 @@ from logger import logger
 
 
 class Client:
-    # default_abi = DefaultABIs.Token
     default_abi = None
 
     def __init__(
             self,
-            private_key: str,
+            account: Account,
             network: Network
     ):
-        self.private_key = private_key
+        self.account = account
         self.network = network
         self.w3 = Web3(Web3.AsyncHTTPProvider(
             endpoint_uri=self.network.rpc),
             modules={'eth': (AsyncEth,)},
             middlewares=[]
         )
-        self.address = Web3.to_checksum_address(self.w3.eth.account.from_key(private_key=private_key).address)
 
     async def get_decimals(self, contract_address: str) -> int:
         try:
@@ -39,7 +38,7 @@ class Client:
 
     async def balance_of(self, contract_address: str, address: Optional[str] = None) -> TokenAmount:
         if not address:
-            address = self.address
+            address = self.account.address
         contract = self.w3.eth.contract(address=Web3.to_checksum_address(contract_address), abi=self.default_abi)
         amount = await contract.functions.balanceOf(address).call()
         decimals = await self.get_decimals(contract_address=contract_address)
@@ -52,17 +51,17 @@ class Client:
     async def get_allowance(self, token_address: str, spender: str) -> TokenAmount:
         contract = self.w3.eth.contract(address=Web3.to_checksum_address(token_address), abi=self.default_abi)
         return TokenAmount(
-            amount=await contract.functions.allowance(self.address, spender).call(),
+            amount=await contract.functions.allowance(self.account.address, spender).call(),
             decimals=await self.get_decimals(contract_address=token_address),
             wei=True
         )
 
     async def check_balance_interface(self, token_address, min_value) -> bool:
-        logger.info(f'{self.address[:6]} | balanceOf | check balance of {token_address}')
+        logger.info(f'{self.account.address[:6]} | balanceOf | check balance of {token_address}')
         balance = await self.balance_of(contract_address=token_address)
         decimal = await self.get_decimals(contract_address=token_address)
         if balance < min_value * 10 ** decimal:
-            logger.error(f'{self.address[:6]} | balanceOf | not enough {token_address}')
+            logger.error(f'{self.account.address[:6]} | balanceOf | not enough {token_address}')
             return False
         return True
 
@@ -97,11 +96,11 @@ class Client:
             max_fee_per_gas: Optional[int] = None
     ):
         if not from_:
-            from_ = self.address
+            from_ = self.account.address
 
         tx_params = {
             'chainId': self.network.chain_id,
-            'nonce': await self.w3.eth.get_transaction_count(self.address),
+            'nonce': await self.w3.eth.get_transaction_count(self.account.address),
             'from': Web3.to_checksum_address(from_),
             'to': Web3.to_checksum_address(to),
         }
@@ -131,24 +130,24 @@ class Client:
         try:
             tx_params['gas'] = int(await self.w3.eth.estimate_gas(tx_params) * increase_gas)
         except Exception as err:
-            logger.error(f'{self.address[:6]} | Transaction failed | {err}')
+            logger.error(f'{self.account.address[:6]} | Transaction failed | {err}')
             return None
-        sign = self.w3.eth.account.sign_transaction(tx_params, self.private_key)
+        sign = self.w3.eth.account.sign_transaction(tx_params, self.account.key.hex())
         tx_hash = await self.w3.eth.send_raw_transaction(sign.rawTransaction)
-        logger.success(f'{self.address[:6]} | Transaction {tx_hash.hex()} sent')
+        logger.success(f'{self.account.address[:6]} | Transaction {tx_hash.hex()} sent')
         return tx_hash.hex()
 
     async def verif_tx(self, tx_hash) -> bool:
         try:
             data = await self.w3.eth.wait_for_transaction_receipt(tx_hash, timeout=200)
             if 'status' in data and data['status'] == 1:
-                logger.success(f'{self.address[:6]} | transaction was successful: {tx_hash.hex()}')
+                logger.success(f'{self.account.address[:6]} | transaction was successful: {tx_hash.hex()}')
                 return True
             else:
-                logger.error(f'{self.address[:6]} | transaction failed {data["transactionHash"].hex()}')
+                logger.error(f'{self.account.address[:6]} | transaction failed {data["transactionHash"].hex()}')
                 return False
         except Exception as err:
-            logger.error(f'{self.address[:6]} | unexpected error in <verif_tx> function: {err}')
+            logger.error(f'{self.account.address[:6]} | unexpected error in <verif_tx> function: {err}')
             return False
 
     async def approve(self, token_address, spender, amount: Optional[TokenAmount] = None):
@@ -170,7 +169,7 @@ class Client:
         balance = await self.balance_of(contract_address=token_address)
 
         if balance.Wei <= 0:
-            logger.error(f'{self.address[:6]} | approve | zero balance')
+            logger.error(f'{self.account.address[:6]} | approve | zero balance')
             return False
 
         if not amount or amount.Wei > balance.Wei:
@@ -178,14 +177,14 @@ class Client:
 
         approved = await self.get_allowance(token_address=token_address, spender=spender)
         if amount.Wei <= approved.Wei:
-            logger.success(f'{self.address[:6]} | approve | already approved')
+            logger.success(f'{self.account.address[:6]} | approve | already approved')
             return True
 
         tx_hash = await self.approve(token_address=token_address, spender=spender, amount=amount)
         if not await self.verif_tx(tx_hash=tx_hash):
-            logger.error(f'{self.address[:6]} | approve | {token_address} for spender {spender}')
+            logger.error(f'{self.account.address[:6]} | approve | {token_address} for spender {spender}')
             return False
-        logger.success(f'{self.address[:6]} | approve | approved')
+        logger.success(f'{self.account.address[:6]} | approve | approved')
         return True
 
     async def get_eth_price(self, token='ETH'):
@@ -203,8 +202,8 @@ class Client:
 
     async def get_native_balance(self) -> TokenAmount:
         balance = TokenAmount(
-            amount=await self.w3.eth.get_balance(self.address),
+            amount=await self.w3.eth.get_balance(self.account.address),
             wei=True
         )
-        logger.info(f'{self.address} | Balance - {float(balance.Ether)} {self.network.coin_symbol}')
+        logger.info(f'{self.account.address} | Balance - {float(balance.Ether)} {self.network.coin_symbol}')
         return balance

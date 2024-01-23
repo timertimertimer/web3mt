@@ -1,6 +1,3 @@
-from web2.config import *
-from models import Profile
-
 REIKI_URL = 'https://reiki.web3go.xyz/'
 REIKI_API = REIKI_URL + 'api/'
 headers = {
@@ -19,8 +16,7 @@ headers = {
     'x-app-channel': 'DIN',
     'x-public-api': 'public-api',
     'Pragma': 'no-cache',
-    'Cache-Control': 'no-cache',
-    'User-Agent': Profile.user_agent
+    'Cache-Control': 'no-cache'
 }
 QUIZES = {
     "d5cec2e4-ef2e-4598-9963-4552e9b32ef5": ['A', 'B', 'B', 'A', 'A'],
@@ -30,6 +26,3 @@ QUIZES = {
     "16a58c18-d3c9-4b8d-aedc-937e7e762a5c": ['A', 'D', 'A', 'B', 'D'],
     "631bb81f-035a-4ad5-8824-e219a7ec5ccb": ['', 'B', 'B', 'A', 'B']
 }
-
-if __name__ == '__main__':
-    print(DATA_FILES)

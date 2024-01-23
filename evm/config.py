@@ -9,7 +9,7 @@ else:
 
 ABIS_DIR = os.path.join(ROOT_DIR, 'abis')
 
-REIKI_ABI = os.path.join(ABIS_DIR, 'reiki.json')
+REIKI_ABI_PATH = os.path.join(ABIS_DIR, 'reiki.json')
 
 private_key = ''
 seed = ''

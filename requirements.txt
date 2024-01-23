@@ -1,10 +1,10 @@
+web3db @ git+https://github.com/timertimertimer/web3db.git
 aiosqlite
 web3
 eth_account
 python-dotenv
-better_automation
+better_automation==2.1.0b14
 better_proxy
 aiohttp
 aptos_sdk
 loguru
-pytz

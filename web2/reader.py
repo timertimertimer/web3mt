@@ -1,34 +1,14 @@
-from pprint import pprint
+import os
 
-from better_automation.twitter import TwitterAccount
-from eth_account import Account
+from web3db.core import DBHelper
+from dotenv import load_dotenv
+from web3db.models import Profile
 
-from config import DATA_FILES, DATA_PATH
-from models import Profile, DiscordAccountModified
-from utils import get_accounts
-
-
-def get_profiles():
-    data = {}
-    for filename in DATA_FILES:
-        with open(DATA_PATH / filename, encoding='utf-8') as file:
-            data[filename.rstrip('.txt')] = [row.strip() for row in file]
-
-    profiles = [
-        Profile(
-            discord=DiscordAccountModified(discord),
-            email=email,
-            twitter=TwitterAccount(twitter),
-            proxy=proxy,
-            evm_account=Account.from_key(private)
-        )
-        for discord, email, twitter, proxy, private in zip(
-            data['discords'], data['emails'], data['twitters'], data['proxies'], get_accounts()
-        )
-    ]
-
-    return profiles
+load_dotenv()
 
 
-if __name__ == '__main__':
-    pprint(get_profiles())
+async def get_profiles(random_proxy_distinct: bool = False, limit: int = None):
+    db = DBHelper(os.getenv('CONNECTION_STRING'))
+    if random_proxy_distinct:
+        return await db.get_random_profiles_by_proxy_distinct(limit)
+    return await db.get_all_from_table(Profile, limit)
