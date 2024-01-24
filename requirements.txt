@@ -8,3 +8,4 @@ better_proxy
 aiohttp
 aptos_sdk
 loguru
+apscheduler

@@ -6,6 +6,8 @@ import json
 import random
 from datetime import datetime, timezone, timedelta
 
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
+from apscheduler.triggers.cron import CronTrigger
 from dotenv import load_dotenv
 
 from aiohttp.client_exceptions import ClientResponseError
@@ -72,6 +74,17 @@ class Reiki:
                 await task
         else:
             await self.claim_daily()
+            scheduler = AsyncIOScheduler()
+            job = scheduler.add_job(
+                self.claim_daily,
+                trigger=CronTrigger.from_crontab(self.get_cron_expression()),
+                jobstore=str(self.profile.id),
+                args=[scheduler]
+            )
+            scheduler.start()
+            logger.info(f'{self.profile.id} | Next daily claim - {job.next_run_time}')
+            while 1:
+                await asyncio.sleep(1000)
 
     async def me(self):
         url = 'https://reiki.web3go.xyz/api/GoldLeaf/me'
@@ -292,6 +305,10 @@ class Reiki:
         await asyncio.sleep(delay)
         return response, data
 
+    @staticmethod
+    async def get_cron_expression():
+        return f"{random.randint(0, 59)} {random.randint(5, 20)} * * *"
+
 
 async def start(profile, choice: int) -> None:
     async with Reiki(profile) as reiki:
@@ -307,16 +324,19 @@ async def start(profile, choice: int) -> None:
 
 async def main():
     print('1. Do tasks')
-    print('2. Claim daily')
+    print('2. Claim daily everyday random time')
     choice = int(input())
     await create_table()
 
     tasks = []
-    profiles = await get_profiles(random_proxy_distinct=True)
+    profiles = await get_profiles(random_proxy_distinct=True, limit=1)
     for profile in profiles:
         tasks.append(asyncio.create_task(start(profile, choice)))
     await asyncio.gather(*tasks)
 
 
 if __name__ == '__main__':
-    asyncio.run(main())
+    try:
+        asyncio.run(main())
+    except (KeyboardInterrupt, SystemExit):
+        pass
