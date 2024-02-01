@@ -202,3 +202,13 @@ BNB = Network(
     coin_symbol='BNB',
     explorer='https://bscscan.com/'
 )
+
+Linea = Network(
+    name='linea',
+    rpc='https://1rpc.io/linea',
+    chain_id=59144,
+    eip1559_tx=True,
+    coin_symbol='ETH',
+    explorer='https://lineascan.build/'
+)
+

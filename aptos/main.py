@@ -2,7 +2,7 @@ import asyncio
 
 from aptos.utils import get_accounts, get_config_section, logger
 from client import AptosClient
-from utils import read_json
+from utils import read_json, MWD
 
 aptos_config = get_config_section('aptos')
 
@@ -29,10 +29,22 @@ async def bluemove_sell_nfts():
 
 async def aptmap_balance():
     collection_id = aptos_config['collection_id']
-    for account in get_accounts():
+    total = 0
+    for account in get_accounts(MWD / 'aptos' / 'accounts.txt'):
         client = AptosClient(account)
         balance = await client.get_storage_ids(collection_id)
+        total += len(balance)
         logger.info(f"{str(client.account_.address())[:6]} | Balance of aptmap - {len(balance)}")
+    logger.info(f'Total: {total}')
+
+
+async def batch_balance():
+    total = 0
+    for account in get_accounts(MWD / 'aptos' / 'accounts.txt'):
+        client = AptosClient(account)
+        balance = await client.balance()
+        total += balance
+    print(total)
 
 
 if __name__ == '__main__':

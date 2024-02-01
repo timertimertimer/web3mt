@@ -6,6 +6,7 @@ python-dotenv
 better_automation==2.1.0b14
 better_proxy
 aiohttp
+aiohttp_proxy
 aptos_sdk
 loguru
 apscheduler

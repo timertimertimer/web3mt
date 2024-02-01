@@ -47,6 +47,8 @@ class Reiki:
             trust_env=True
         )
         self.evm_account = Account.from_key(decrypt(profile.evm_private, os.getenv('PASSPHRASE')))
+        if not self.evm_account:
+            logger.error(f"{profile.id} | Couldn't decrypt private")
         self.profile = profile
 
     async def __aenter__(self):
@@ -91,6 +93,7 @@ class Reiki:
         while True:
             response, data = await self.request('GET', url)
             try:
+                response, data = await self.request('GET', url)
                 response.raise_for_status()
                 logger.success(
                     f'{self.profile.id} | Points: today - {data["today"] if "today" in data else 0}, total - {data["total"] if "total" in data else 0}')
@@ -192,7 +195,16 @@ class Reiki:
 
     async def quizes(self) -> None:
         url = REIKI_API + 'quiz'
-        response, data = await self.request('GET', url)
+        while True:
+            try:
+                response, data = await self.request('GET', url)
+                break
+            except ClientResponseError as e:
+                logger.error(f'{self.profile.id} | {url} {e.message}')
+                if e.status == 401:
+                    await self.create_bearer_token()
+                else:
+                    return
         qs = random.sample(data, len(data))
         for quiz in qs:
             if quiz['currentProgress'] == quiz['totalItemCount']:
@@ -247,9 +259,13 @@ class Reiki:
         else:
             logger.error(f"{self.profile.id} | Couldn't connect email - {data}")
 
-    async def connect_twitter(self):
+    async def connect_twitter(self) -> bool:
         url = REIKI_API + 'oauth/twitter2/'
-        response, data = await self.request('GET', url, follow_redirects=True)
+        try:
+            response, data = await self.request('GET', url, follow_redirects=True)
+        except ClientResponseError as e:
+            logger.error(f'{self.profile.id} | {url} {e.message}')
+            return False
         payload = {**response.url.query}
         payload.pop('nonce')
         code = await TwitterClient(
@@ -258,10 +274,15 @@ class Reiki:
             verify=False,
         ).oauth_2(**payload)
         await self.callback(url, code, response.url.query['state'])
+        return True
 
     async def connect_discord(self):
         url = REIKI_API + 'oauth/discord/'
-        response, data = await self.request('GET', url, follow_redirects=True)
+        try:
+            response, data = await self.request('GET', url, follow_redirects=True)
+        except ClientResponseError as e:
+            logger.error(f'{self.profile.id} | {url} {e.message}')
+            return False
         payload = {**response.url.query}
         payload.pop('nonce')
         code = await DiscordClientModified(
@@ -288,7 +309,7 @@ class Reiki:
             json: dict = None,
             follow_redirects: bool = False
     ):
-        # logger.info(f'{method} {url}')
+        logger.info(f'{method} {url}')
         response = await self.session.request(
             method=method,
             url=url,
@@ -317,7 +338,8 @@ async def start(profile, choice: int) -> None:
             reiki.session.headers['Authorization'] = f'Bearer {token}'
         client = Client(reiki.evm_account, BNB)
         client.default_abi = read_json(REIKI_ABI_PATH)
-        await mint(client)
+        if not await mint(client):
+            return
         await reiki.me()
         await reiki.start_tasks(choice == 1)
 

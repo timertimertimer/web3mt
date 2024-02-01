@@ -48,7 +48,7 @@ def retry(n: int):
                     response, data = await func(*args, **kwargs)
                     response.raise_for_status()
                     return response, data
-                except (ClientResponseError, ServerDisconnectedError) as e:
+                except ServerDisconnectedError as e:
                     logger.error(e.message)
                     logger.info(f'Retrying {i + 1}')
                     continue

@@ -30,7 +30,7 @@ class AptosClient(RestClient):
                 logger.error(f"{str(self.account_.address())[:6]} | {e}")
                 return False
 
-    async def balance(self, ledger_version: int = None) -> int:
+    async def balance(self, ledger_version: int = None) -> float:
         try:
             balance = await super().account_balance(self.account_.address()) / Z8
             logger.info(f'{str(self.account_.address())[:6]} | {balance} APT')
