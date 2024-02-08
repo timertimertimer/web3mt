@@ -12,6 +12,7 @@ ABIS_DIR = os.path.join(ROOT_DIR, 'abis')
 REIKI_ABI_PATH = os.path.join(ABIS_DIR, 'reiki.json')
 LXP_ABI_PATH = os.path.join(ABIS_DIR, 'lxp.json')
 OPBNB_BRIDGE_ABI_PATH = os.path.join(ABIS_DIR, 'opbnb_bridge.json')
+HYPERCOMIC_ABI_PATH = os.path.join(ABIS_DIR, 'hypercomic.json')
 
 private_key = ''
 seed = ''

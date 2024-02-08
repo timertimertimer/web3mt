@@ -1,0 +1,16 @@
+[
+  {
+    "constant": false,
+    "inputs": [
+      {
+        "name": "signature",
+        "type": "bytes"
+      }
+    ],
+    "name": "mint",
+    "outputs": [],
+    "payable": false,
+    "stateMutability": "nonpayable",
+    "type": "function"
+  }
+]

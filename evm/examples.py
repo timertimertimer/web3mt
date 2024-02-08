@@ -8,8 +8,8 @@ from web3db.utils import decrypt
 
 from logger import logger
 from client import Client
-from evm.config import LXP_ABI_PATH
-from models import Network, Linea, opBNB
+from evm.config import LXP_ABI_PATH, OPBNB_BRIDGE_ABI_PATH
+from models import Network, Linea, opBNB, BNB, TokenAmount
 
 from dotenv import load_dotenv
 
@@ -40,11 +40,9 @@ async def check_xp_linea():
     logger.success(f'Total - {sum([el.Ether for el in result])} LXP')
 
 
-async def have_balance(client: Client):
-    balance = await client.get_native_balance()
-    if balance.Wei > 0:
-        logger.success(f'{client.account.address} | Balance: {balance.Wei} {client.network.coin_symbol}')
-        return client
+async def have_balance(client: Client, ethers: float = 0.0015) -> bool:
+    if (await client.get_native_balance()).Ether > ethers:
+        return True
     return False
 
 
@@ -55,6 +53,26 @@ async def get_wallets_with_balance(network: Network):
         client = Client(Account.from_key(decrypt(profile.evm_private, os.getenv('PASSPHRASE'))), network)
         tasks.append(asyncio.create_task(have_balance(client)))
     await asyncio.gather(*tasks)
+
+
+async def opbnb_bridge(account: Account):
+    if await have_balance(Client(account, opBNB)):
+        return
+    client = Client(account, BNB)
+    contract_address = '0xF05F0e4362859c3331Cb9395CBC201E3Fa6757Ea'
+    client.default_abi = read_json(OPBNB_BRIDGE_ABI_PATH)
+    contract = client.w3.eth.contract(
+        address=client.w3.to_checksum_address(contract_address),
+        abi=client.default_abi
+    )
+    tx_hash = await client.send_transaction(
+        to=contract_address,
+        data=contract.encodeABI('depositETH', args=[1, b'']),
+        value=TokenAmount(0.002).Wei
+    )
+    if tx_hash:
+        return tx_hash
+    return False
 
 
 if __name__ == '__main__':

@@ -4,13 +4,12 @@ import os
 import datetime
 import json
 import random
+
 from datetime import datetime, timezone, timedelta
 
-from apscheduler.schedulers.asyncio import AsyncIOScheduler
-from apscheduler.triggers.cron import CronTrigger
 from dotenv import load_dotenv
 
-from aiohttp.client_exceptions import ClientResponseError
+from aiohttp.client_exceptions import ClientResponseError, ClientConnectionError
 from aiohttp import ClientSession
 from aiohttp_proxy import ProxyConnector
 from better_proxy import Proxy
@@ -19,32 +18,32 @@ from better_automation.twitter import TwitterClient, TwitterAccount
 from eth_account import Account
 from eth_account.messages import encode_defunct
 from web3.auto import w3
+from web3db import DBHelper
 from web3db.models import Profile
-from web3db.utils import decrypt
+from web3db.utils import decrypt, DEFAULT_UA
 
 from evm.client import Client
 from evm.config import REIKI_ABI_PATH
 from evm.reiki import mint
-from web2.reader import get_profiles
 from web2.reiki.db import *
 from web2.reiki.config import *
 from web2.utils import *
 
 from utils import logger, read_json
-from models import BNB, DiscordAccountModified
+from evm.models import BNB
+from web2.models import DiscordAccountModified
 
 load_dotenv()
 
 
 class Reiki:
     def __init__(self, profile: Profile):
-        headers['User-Agent'] = profile.user_agent
+        headers['User-Agent'] = DEFAULT_UA
         self.session = ClientSession(
             connector=ProxyConnector.from_url(
-                url=Proxy.from_str(proxy=profile.proxy.proxy_string).as_url, verify_ssl=False
+                url=Proxy.from_str(proxy=profile.proxy.proxy_string).as_url, verify_ssl=True
             ),
-            headers=headers,
-            trust_env=True
+            headers=headers
         )
         self.evm_account = Account.from_key(decrypt(profile.evm_private, os.getenv('PASSPHRASE')))
         if not self.evm_account:
@@ -76,22 +75,10 @@ class Reiki:
                 await task
         else:
             await self.claim_daily()
-            scheduler = AsyncIOScheduler()
-            job = scheduler.add_job(
-                self.claim_daily,
-                trigger=CronTrigger.from_crontab(self.get_cron_expression()),
-                jobstore=str(self.profile.id),
-                args=[scheduler]
-            )
-            scheduler.start()
-            logger.info(f'{self.profile.id} | Next daily claim - {job.next_run_time}')
-            while 1:
-                await asyncio.sleep(1000)
 
     async def me(self):
         url = 'https://reiki.web3go.xyz/api/GoldLeaf/me'
         while True:
-            response, data = await self.request('GET', url)
             try:
                 response, data = await self.request('GET', url)
                 response.raise_for_status()
@@ -101,6 +88,9 @@ class Reiki:
             except ClientResponseError as e:
                 logger.error(f'{self.profile.id} | {e.message}')
                 await self.create_bearer_token()
+            except (ClientConnectionError, TypeError) as e:
+                logger.error(f'{self.profile.id} | {e}\n{self.profile.proxy.proxy_string}')
+                return
 
     async def create_bearer_token(self):
         nonce = await self.web3_nonce()
@@ -346,7 +336,7 @@ async def start(profile, choice: int) -> None:
 
 async def main():
     print('1. Do tasks')
-    print('2. Claim daily everyday random time')
+    print('2. Claim daily')
     choice = int(input())
     await create_table()
 

@@ -1,6 +1,6 @@
 from typing import Callable, Any
 
-from aiohttp.client_exceptions import ClientResponseError, ServerDisconnectedError
+from aiohttp.client_exceptions import ServerDisconnectedError
 from better_automation.discord import DiscordClient
 from yarl import URL
 from logger import logger
@@ -46,7 +46,8 @@ def retry(n: int):
             for i in range(n):
                 try:
                     response, data = await func(*args, **kwargs)
-                    response.raise_for_status()
+                    if not kwargs.get('follow_redirects'):
+                        response.raise_for_status()
                     return response, data
                 except ServerDisconnectedError as e:
                     logger.error(e.message)

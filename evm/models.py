@@ -1,9 +1,6 @@
 from dataclasses import dataclass
-from pydantic import Field
 from decimal import Decimal
 from typing import Union
-
-from better_automation.discord import DiscordAccount
 
 
 @dataclass
@@ -127,10 +124,6 @@ class Network:
         return f'{self.name}'
 
 
-class DiscordAccountModified(DiscordAccount):
-    auth_token: str = Field(default=None, pattern=r"^[A-Za-z0-9+._-]{70}$|^[A-Za-z0-9+._-]{72}$")
-
-
 Ethereum = Network(
     name='ethereum',
     rpc='https://ethereum.publicnode.com',
@@ -211,4 +204,11 @@ Linea = Network(
     coin_symbol='ETH',
     explorer='https://lineascan.build/'
 )
-
+zkSync = Network(
+    name='zksync',
+    rpc='https://1rpc.io/zksync2-era',
+    chain_id=324,
+    eip1559_tx=True,
+    coin_symbol='ETH',
+    explorer='https://explorer.zksync.io/'
+)

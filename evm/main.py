@@ -1,27 +1,28 @@
 import asyncio
 import os
-
-from eth_account import Account
-from web3db import DBHelper
-from web3db.utils import decrypt
-
-from client import Client
-from models import BNB
-
 from dotenv import load_dotenv
 
+from web3db import DBHelper
+from eth_account import Account
+
+from client import Client
+from models import opBNB
+from utils import get_accounts
+from evm.examples import have_balance, opbnb_bridge
+
+Account.enable_unaudited_hdwallet_features()
 load_dotenv()
+db = DBHelper(os.getenv('CONNECTION_STRING'))
 
 
-async def check_balance_batch():
-    db = DBHelper(os.getenv('CONNECTION_STRING'))
-    profiles = await db.get_random_profiles_by_proxy_distinct()
-    tasks = []
-    for profile in profiles:
-        client = Client(Account.from_key(decrypt(profile.evm_private, os.getenv('PASSPHRASE'))), BNB)
-        tasks.append(asyncio.create_task(client.get_native_balance()))
-    await asyncio.gather(*tasks)
+async def main():
+    wallets = get_accounts()
+    for account in wallets:
+        client = Client(account, opBNB)
+        if await have_balance(client, 0.002):
+            continue
+        print(await opbnb_bridge(account))
 
 
 if __name__ == '__main__':
-    asyncio.run(check_balance_batch())
+    asyncio.run(main())

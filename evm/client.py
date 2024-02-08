@@ -6,8 +6,7 @@ from web3.eth import AsyncEth
 from web3.exceptions import ABIFunctionNotFound
 from web3.middleware import geth_poa_middleware
 
-from models import TokenAmount
-from models import Network
+from .models import TokenAmount, Network
 from logger import logger
 
 
@@ -26,6 +25,9 @@ class Client:
             modules={'eth': (AsyncEth,)},
             middlewares=[]
         )
+
+    async def nonce(self):
+        return await self.w3.eth.get_transaction_count(self.account.address)
 
     async def get_decimals(self, contract_address: str) -> int:
         try:
@@ -100,7 +102,7 @@ class Client:
 
         tx_params = {
             'chainId': self.network.chain_id,
-            'nonce': await self.w3.eth.get_transaction_count(self.account.address),
+            'nonce': await self.nonce(),
             'from': Web3.to_checksum_address(from_),
             'to': Web3.to_checksum_address(to),
         }
@@ -130,15 +132,15 @@ class Client:
         try:
             tx_params['gas'] = int(await self.w3.eth.estimate_gas(tx_params) * increase_gas)
         except Exception as err:
-            logger.error(f'{self.account.address[:6]} | Transaction failed | {err}')
+            logger.error(f'{self.account.address} | Transaction failed | {err}')
             return
         sign = self.w3.eth.account.sign_transaction(tx_params, self.account.key.hex())
         try:
             tx_hash = await self.w3.eth.send_raw_transaction(sign.rawTransaction)
-        except ValueError as e:
-            logger.error(f'{self.account.address[:6]} | {e}')
+        except Exception as e:
+            logger.error(f'{self.account.address} | {e}')
             return
-        logger.success(f'{self.account.address[:6]} | Transaction {tx_hash.hex()} sent')
+        logger.success(f'{self.account.address} | Transaction {tx_hash.hex()} sent')
         return tx_hash.hex()
 
     async def verif_tx(self, tx_hash) -> bool:
@@ -204,10 +206,12 @@ class Client:
                 return None
             return float(result_dict['asks'][0][0])
 
-    async def get_native_balance(self, address: str = None) -> TokenAmount:
+    async def get_native_balance(self, address: str = None, echo: bool = False) -> TokenAmount:
         balance = TokenAmount(
             amount=await self.w3.eth.get_balance(address or self.account.address),
             wei=True
         )
-        logger.info(f'{address or self.account.address} | Balance - {float(balance.Ether)} {self.network.coin_symbol}')
+        if echo:
+            logger.info(
+                f'{address or self.account.address} | Balance - {float(balance.Ether)} {self.network.coin_symbol}')
         return balance

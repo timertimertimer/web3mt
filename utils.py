@@ -38,7 +38,7 @@ def find_keys(input_data: str) -> str | None:
     return None
 
 
-def get_accounts(file_path: str = None) -> list[str]:
+def get_accounts(file_path: str = None) -> list[Account] | list:
     accounts = []
     accounts_path = MWD / 'evm' / 'accounts.txt'
     if not accounts_path.exists():
@@ -49,7 +49,7 @@ def get_accounts(file_path: str = None) -> list[str]:
             target_private_key = find_keys(input_data=row.strip())
 
             if target_private_key:
-                accounts.append(target_private_key)
+                accounts.append(Account.from_key(target_private_key))
     return accounts
 
 
