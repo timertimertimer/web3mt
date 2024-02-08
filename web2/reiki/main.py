@@ -316,10 +316,6 @@ class Reiki:
         await asyncio.sleep(delay)
         return response, data
 
-    @staticmethod
-    async def get_cron_expression():
-        return f"{random.randint(0, 59)} {random.randint(5, 20)} * * *"
-
 
 async def start(profile, choice: int) -> None:
     async with Reiki(profile) as reiki:

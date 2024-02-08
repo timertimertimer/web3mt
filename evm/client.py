@@ -1,5 +1,6 @@
 from aiohttp import ClientSession
 from eth_account import Account
+from hexbytes import HexBytes
 from web3 import Web3
 from typing import Optional
 from web3.eth import AsyncEth
@@ -96,7 +97,7 @@ class Client:
             value=None,
             max_priority_fee_per_gas: Optional[int] = None,
             max_fee_per_gas: Optional[int] = None
-    ):
+    ) -> tuple[bool, Exception | HexBytes]:
         if not from_:
             from_ = self.account.address
 
@@ -133,15 +134,15 @@ class Client:
             tx_params['gas'] = int(await self.w3.eth.estimate_gas(tx_params) * increase_gas)
         except Exception as err:
             logger.error(f'{self.account.address} | Transaction failed | {err}')
-            return
+            return False, err
         sign = self.w3.eth.account.sign_transaction(tx_params, self.account.key.hex())
         try:
             tx_hash = await self.w3.eth.send_raw_transaction(sign.rawTransaction)
         except Exception as e:
             logger.error(f'{self.account.address} | {e}')
-            return
+            return False, e
         logger.success(f'{self.account.address} | Transaction {tx_hash.hex()} sent')
-        return tx_hash.hex()
+        return True, tx_hash.hex()
 
     async def verif_tx(self, tx_hash) -> bool:
         try:

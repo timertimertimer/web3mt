@@ -50,14 +50,17 @@ async def mint(profile: Profile):
     client = Client(account, zkSync)
     client.default_abi = read_json(HYPERCOMIC_ABI_PATH)
     for i, contract_address in contracts.items():
-        signature = (await get_signature(proxy_string=profile.proxy.proxy_string, nft_number=i, client=client)).strip()
-        if not signature.startswith('0x'):
-            logger.error(f'{client.account.address} | {signature}')
-            continue
         contract = client.w3.eth.contract(
             address=client.w3.to_checksum_address(contract_address),
             abi=client.default_abi
         )
+        if (await client.balance_of(contract_address)).Ether == 1:
+            logger.info(f'{client.account.address} | Already minted')
+            continue
+        signature = (await get_signature(proxy_string=profile.proxy.proxy_string, nft_number=i, client=client)).strip()
+        if not signature.startswith('0x'):
+            logger.error(f'{client.account.address} | {signature}')
+            continue
         signature = bytes.fromhex(signature[2:])
         await client.send_transaction(
             to=contract_address,
