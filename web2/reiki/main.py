@@ -10,9 +10,6 @@ from datetime import datetime, timezone, timedelta
 from dotenv import load_dotenv
 
 from aiohttp.client_exceptions import ClientResponseError, ClientConnectionError
-from aiohttp import ClientSession
-from aiohttp_proxy import ProxyConnector
-from better_proxy import Proxy
 from better_automation.twitter import TwitterClient, TwitterAccount
 
 from eth_account import Account
@@ -29,7 +26,7 @@ from web2.reiki.db import *
 from web2.reiki.config import *
 from web2.utils import *
 
-from utils import logger, read_json
+from utils import logger, read_json, ProfileSession
 from evm.models import BNB
 from web2.models import DiscordAccountModified
 
@@ -39,22 +36,17 @@ load_dotenv()
 class Reiki:
     def __init__(self, profile: Profile):
         headers['User-Agent'] = DEFAULT_UA
-        self.session = ClientSession(
-            connector=ProxyConnector.from_url(
-                url=Proxy.from_str(proxy=profile.proxy.proxy_string).as_url, verify_ssl=True
-            ),
-            headers=headers
-        )
+        self.session = ProfileSession(profile)
         self.evm_account = Account.from_key(decrypt(profile.evm_private, os.getenv('PASSPHRASE')))
         if not self.evm_account:
-            logger.error(f"{profile.id} | Couldn't decrypt private")
+            logger.error("Couldn't decrypt private", id=profile.id)
         self.profile = profile
 
     async def __aenter__(self):
         return self
 
     async def __aexit__(self, exc_type, exc_val, exc_tb):
-        logger.success(f'{self.profile.id} | Tasks completed')
+        logger.success('Tasks completed', id=self.profile.id)
         await self.session.connector.close()
         await self.session.close()
 
@@ -64,7 +56,7 @@ class Reiki:
             if not data['referrerWalletAddress']:
                 await self.refer()
             else:
-                logger.success(f'{self.profile.id} | Already referred by {data["referrerWalletAddress"]}')
+                logger.success(f'Already referred by {data["referrerWalletAddress"]}', id=self.profile.id)
             await self.claim_gifts()
             all_tasks = [
                 self.claim_daily(),
@@ -80,17 +72,16 @@ class Reiki:
         url = 'https://reiki.web3go.xyz/api/GoldLeaf/me'
         while True:
             try:
-                response, data = await self.request('GET', url)
+                response, data = await self.session.request(method='GET', url=url)
                 response.raise_for_status()
                 logger.success(
-                    f'{self.profile.id} | Points: today - {data["today"] if "today" in data else 0}, total - {data["total"] if "total" in data else 0}')
+                    f'Points: today - {data["today"] if "today" in data else 0}, '
+                    f'total - {data["total"] if "total" in data else 0}',
+                    id=self.profile.id
+                )
                 return
             except ClientResponseError as e:
-                logger.error(f'{self.profile.id} | {e.message}')
                 await self.create_bearer_token()
-            except (ClientConnectionError, TypeError) as e:
-                logger.error(f'{self.profile.id} | {e}\n{self.profile.proxy.proxy_string}')
-                return
 
     async def create_bearer_token(self):
         nonce = await self.web3_nonce()
@@ -103,9 +94,9 @@ class Reiki:
         payload = {
             "address": self.evm_account.address
         }
-        response, data = await self.request('POST', url, json=payload)
+        response, data = await self.session.request(method='POST', url=url, json=payload)
         nonce = data['nonce']
-        logger.success(f'{self.profile.id} | Nonce: {nonce}')
+        logger.success(f'Nonce: {nonce}', id=self.profile.id)
         return nonce
 
     async def web3_challenge(self, nonce: str) -> str:
@@ -117,9 +108,9 @@ class Reiki:
             'nonce': nonce,
             'signature': signature
         }
-        response, data = await self.request('POST', url, json=payload)
+        response, data = await self.session.request(method='POST', url=url, json=payload)
         token = data['extra']['token']
-        logger.success(f'{self.profile.id} | Bearer token: {token}')
+        logger.success(f'Bearer token: {token}', id=self.profile.id)
         return token
 
     def message_and_sign_message(self, nonce: str) -> tuple[str, str]:
@@ -134,34 +125,34 @@ class Reiki:
         url = REIKI_API + 'nft/sync'
         referal_code = os.getenv('REIKI_REFERAL_CODE')
         self.session.headers['X-Referral-Code'] = referal_code
-        response, data = await self.request('GET', url)
+        response, data = await self.session.request(method='GET', url=url)
         if data['msg'] == 'success':
-            logger.success(f"{self.profile.id} | Refered by {referal_code}")
+            logger.success("Refered by {referal_code}", id=self.profile.id)
         else:
-            logger.error(data)
+            logger.error(data, id=self.profile.id)
 
     async def claim_gifts(self) -> None:
         url = REIKI_API + 'gift'
-        response, data = await self.request('GET', url, params={'type': 'recent'})
+        response, data = await self.session.request(method='GET', url=url, params={'type': 'recent'})
         if response.status == 200:
             if data:
-                logger.info(f'{self.profile.id} | Got gifts')
+                logger.info(f'Got gifts', id=self.profile.id)
             else:
-                logger.success(f'{self.profile.id} | All gifts are opened')
+                logger.success(f'All gifts are opened', id=self.profile.id)
         else:
-            logger.error(f'{self.profile.id} | {data["message"]}')
+            logger.error(f'{data["message"]}', id=self.profile.id)
         for gift in data:
             gift_id = gift['id']
             gift_name = gift['name']
             if not gift['openedAt']:
                 url = REIKI_API + f'gift/open/{gift_id}'
-                response, data = await self.request('POST', url)
+                response, data = await self.session.request(method='POST', url=url)
                 if data == 'true':
-                    logger.success(f'{self.profile.id} | Opened gift - {gift_name}')
+                    logger.success(f'Opened gift - {gift_name}', id=self.profile.id)
                 else:
-                    logger.error(f"{self.profile.id} | Couldn't open gift - {gift_name}")
+                    logger.error("Couldn't open gift - {gift_name}", id=self.profile.id)
             else:
-                logger.success(f'{self.profile.id} | Already opened gift - {gift_name}')
+                logger.success(f'Already opened gift - {gift_name}', id=self.profile.id)
 
     async def claim_daily(self) -> None:
         url = REIKI_API + "checkin/points/his"
@@ -169,28 +160,32 @@ class Reiki:
         days_until_monday = current_date.weekday()
         start_of_week = current_date - timedelta(days=days_until_monday)
         end_of_week = start_of_week + timedelta(days=6)
-        response, data = await self.request('GET', url, params={
-            'start': start_of_week.strftime('%Y%m%d'), 'end': end_of_week.strftime('%Y%m%d')
-        })
+        response, data = await self.session.request(
+            method='GET',
+            url=url,
+            params={'start': start_of_week.strftime('%Y%m%d'), 'end': end_of_week.strftime('%Y%m%d')}
+        )
         for day in data:
             if day['date'] == current_date.replace(hour=0, minute=0, second=0, microsecond=0).strftime(
                     '%Y-%m-%dT%H:%M:%S.%f')[:-3] + 'Z':
                 if day['status'] != 'checked':
                     url = REIKI_API + 'checkin'
-                    await self.request('PUT', url, params={'day': datetime.now().strftime("%Y-%m-%d")})
-                    logger.success(f'{self.profile.id} | Daily claimed')
+                    await self.session.request(
+                        method='PUT', url=url, params={'day': datetime.now().strftime("%Y-%m-%d")}
+                    )
+                    logger.success(f'Daily claimed', id=self.profile.id)
                 else:
-                    logger.success(f"{self.profile.id} | Daily already claimed")
+                    logger.success("Daily already claimed", id=self.profile.id)
                 break
 
     async def quizes(self) -> None:
         url = REIKI_API + 'quiz'
         while True:
             try:
-                response, data = await self.request('GET', url)
+                response, data = await self.session.request(method='GET', url=url)
                 break
             except ClientResponseError as e:
-                logger.error(f'{self.profile.id} | {url} {e.message}')
+                logger.error(f'{url} {e.message}', id=self.profile.id)
                 if e.status == 401:
                     await self.create_bearer_token()
                 else:
@@ -198,14 +193,16 @@ class Reiki:
         qs = random.sample(data, len(data))
         for quiz in qs:
             if quiz['currentProgress'] == quiz['totalItemCount']:
-                logger.success(f'{self.profile.id} | Quiz {quiz["title"]} already completed')
+                logger.success(f'Quiz {quiz["title"]} already completed', id=self.profile.id)
                 continue
             quiz_id = quiz['id']
             url = REIKI_API + 'quiz/' + quiz_id
-            response, data = await self.request('GET', url)
+            response, data = await self.session.request(method='GET', url=url)
             questions = data['items']
             logger.info(
-                f'{self.profile.id} | Quiz {quiz["title"]}. {quiz["totalItemCount"] - quiz["currentProgress"]} questions left')
+                f'Quiz {quiz["title"]}. {quiz["totalItemCount"] - quiz["currentProgress"]} questions left',
+                id=self.profile.id
+            )
             for i, question in enumerate(questions[quiz['currentProgress']:], start=quiz['currentProgress']):
                 if quiz_id == '631bb81f-035a-4ad5-8824-e219a7ec5ccb' and i == 0:
                     payload = {'answers': [self.evm_account.address]}
@@ -213,15 +210,15 @@ class Reiki:
                     payload = {'answers': [QUIZES[quiz_id][i]]}
                 question_id = question['id']
                 url = REIKI_API + 'quiz/' + question_id + '/answer'
-                response, data = await self.request('POST', url, json=payload)
+                response, data = await self.session.request(method='POST', url=url, json=payload)
                 if response.status == 201 or data['message'] == 'Already answered':
-                    logger.success(f'{self.profile.id} | {data["message"]}')
+                    logger.success(data["message"], id=self.profile.id)
                 else:
-                    logger.info(f'{self.profile.id} | {data["message"]}')
+                    logger.info(data["message"], id=self.profile.id)
 
     async def profile_(self):
         url = REIKI_API + 'profile'
-        return await self.request('GET', url)
+        return await self.session.request(method='GET', url=url)
 
     async def connect_socials(self):
         response, data = await self.profile_()
@@ -231,30 +228,30 @@ class Reiki:
             'discord': self.connect_discord
         }
         if data['email'] == self.profile.email.login:
-            logger.success(f'{self.profile.id} | Email {data["email"]} already connected')
+            logger.success(f'Email {data["email"]} already connected', id=self.profile.id)
             social_tasks.pop('email')
         for social in data['socials']:
             social_tasks.pop(social['type'])
-            logger.success(f'{self.profile.id} | {social["type"].capitalize()} already connected')
+            logger.success(f'{social["type"].capitalize()} already connected', id=self.profile.id)
         for task in social_tasks:
             await social_tasks[task]()
 
     async def connect_email(self):
         url = REIKI_API + 'profile'
-        response, data = await self.request(
-            'PATCH', url, json={'email': self.profile.email.login, 'name': None}
+        response, data = await self.session.request(
+            method='PATCH', url=url, json={'email': self.profile.email.login, 'name': None}
         )
         if data == 'true':
-            logger.success(f'{self.profile.id} | Email connected')
+            logger.success(f'Email connected', id=self.profile.id)
         else:
-            logger.error(f"{self.profile.id} | Couldn't connect email - {data}")
+            logger.error("Couldn't connect email - {data}", id=self.profile.id)
 
     async def connect_twitter(self) -> bool:
         url = REIKI_API + 'oauth/twitter2/'
         try:
-            response, data = await self.request('GET', url, follow_redirects=True)
+            response, data = await self.session.request(method='GET', url=url, follow_redirects=True)
         except ClientResponseError as e:
-            logger.error(f'{self.profile.id} | {url} {e.message}')
+            logger.error(f'{url} {e.message}', id=self.profile.id)
             return False
         payload = {**response.url.query}
         payload.pop('nonce')
@@ -269,9 +266,9 @@ class Reiki:
     async def connect_discord(self):
         url = REIKI_API + 'oauth/discord/'
         try:
-            response, data = await self.request('GET', url, follow_redirects=True)
+            response, data = await self.session.request(method='GET', url=url, follow_redirects=True)
         except ClientResponseError as e:
-            logger.error(f'{self.profile.id} | {url} {e.message}')
+            logger.error(f'{url} {e.message}', id=self.profile.id)
             return False
         payload = {**response.url.query}
         payload.pop('nonce')
@@ -284,37 +281,16 @@ class Reiki:
 
     async def callback(self, url: str, code: str, state: str):
         url += 'callback'
-        response, data = await self.request('GET', url, params={'code': code, 'state': state}, follow_redirects=True)
-        if response.url.query.get('success') == 'true':
-            logger.success(f"{self.profile.id} | {url} connected")
-        else:
-            logger.error(response.url)
-
-    @retry(5)
-    async def request(
-            self,
-            method: str,
-            url: str,
-            params: dict = None,
-            json: dict = None,
-            follow_redirects: bool = False
-    ):
-        logger.info(f'{method} {url}')
-        response = await self.session.request(
-            method=method,
+        response, data = await self.session.request(
+            method='GET',
             url=url,
-            params=params,
-            json=json,
-            allow_redirects=follow_redirects
+            params={'code': code, 'state': state},
+            follow_redirects=True
         )
-        if response.content_type in ['text/html', 'application/octet-stream', 'text/plain']:
-            data = await response.text()
+        if response.url.query.get('success') == 'true':
+            logger.success(f"{url} connected", id=self.profile.id)
         else:
-            data = await response.json()
-        delay = random.uniform(5, 15)
-        logger.info(f'{self.profile.id} | Sleeping for {delay} seconds...')
-        await asyncio.sleep(delay)
-        return response, data
+            logger.error(response.url, id=self.profile.id)
 
 
 async def start(profile, choice: int) -> None:

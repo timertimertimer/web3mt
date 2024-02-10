@@ -5,17 +5,16 @@ from evm.client import Client
 from logger import logger
 from web3 import Web3
 
-from models import BNB
+from evm.models import BNB
 from utils import get_accounts, read_json
 from dotenv import load_dotenv
 
 load_dotenv()
-
 contract_address = '0xa4Aff9170C34c0e38Fed74409F5742617d9E80dc'
 
 
 async def is_minted(client: Client) -> bool:
-    minted = await client.balance_of('0xa4Aff9170C34c0e38Fed74409F5742617d9E80dc')
+    minted = await client.balance_of(contract_address)
     if int(minted.Ether) == 1:
         return True
     return False
@@ -23,7 +22,7 @@ async def is_minted(client: Client) -> bool:
 
 async def mint(client: Client) -> str | bool:
     if await is_minted(client):
-        logger.success(f'{client.account.address[:6]} | Already minted')
+        logger.success(f'Already minted', id=client.account.address)
         return True
     contract = client.w3.eth.contract(
         address=Web3.to_checksum_address(contract_address),

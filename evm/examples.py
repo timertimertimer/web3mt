@@ -40,8 +40,8 @@ async def check_xp_linea():
     logger.success(f'Total - {sum([el.Ether for el in result])} LXP')
 
 
-async def have_balance(client: Client, ethers: float = 0.0015) -> bool:
-    if (await client.get_native_balance()).Ether > ethers:
+async def have_balance(client: Client, ethers: float = 0.002, echo: bool = False) -> bool:
+    if (await client.get_native_balance(echo=echo)).Ether > ethers:
         return True
     return False
 
@@ -55,7 +55,7 @@ async def get_wallets_with_balance(network: Network):
     await asyncio.gather(*tasks)
 
 
-async def opbnb_bridge(account: Account):
+async def opbnb_bridge(account: Account, amount: float = 0.002):
     if await have_balance(Client(account, opBNB)):
         return
     client = Client(account, BNB)
@@ -68,7 +68,7 @@ async def opbnb_bridge(account: Account):
     tx_hash = await client.send_transaction(
         to=contract_address,
         data=contract.encodeABI('depositETH', args=[1, b'']),
-        value=TokenAmount(0.002).Wei
+        value=TokenAmount(amount).Wei
     )
     if tx_hash:
         return tx_hash

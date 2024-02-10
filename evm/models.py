@@ -125,7 +125,7 @@ class Network:
 
 
 Ethereum = Network(
-    name='ethereum',
+    name='Ethereum',
     rpc='https://ethereum.publicnode.com',
     chain_id=1,
     eip1559_tx=True,
@@ -134,7 +134,7 @@ Ethereum = Network(
 )
 
 Arbitrum = Network(
-    name='arbitrum',
+    name='Arbitrum',
     rpc='https://rpc.ankr.com/arbitrum/',
     chain_id=42161,
     eip1559_tx=True,
@@ -143,7 +143,7 @@ Arbitrum = Network(
 )
 
 Optimism = Network(
-    name='optimism',
+    name='Optimism',
     rpc='https://rpc.ankr.com/optimism/',
     chain_id=10,
     eip1559_tx=True,
@@ -152,7 +152,7 @@ Optimism = Network(
 )
 
 Polygon = Network(
-    name='polygon',
+    name='Polygon',
     rpc='https://polygon-rpc.com/',
     chain_id=137,
     eip1559_tx=True,
@@ -161,7 +161,7 @@ Polygon = Network(
 )
 
 Avalanche = Network(
-    name='avalanche',
+    name='Avalanche',
     rpc='https://rpc.ankr.com/avalanche/',
     chain_id=43114,
     eip1559_tx=True,
@@ -170,7 +170,7 @@ Avalanche = Network(
 )
 
 Fantom = Network(
-    name='fantom',
+    name='Fantom',
     rpc='https://rpc.ankr.com/fantom/',
     chain_id=250,
     eip1559_tx=True,
@@ -179,7 +179,7 @@ Fantom = Network(
 )
 
 opBNB = Network(
-    name='opbnb',
+    name='opBNB',
     rpc='https://opbnb.publicnode.com',
     chain_id=204,
     eip1559_tx=True,
@@ -188,7 +188,7 @@ opBNB = Network(
 )
 
 BNB = Network(
-    name='bnb',
+    name='BNB',
     rpc='https://1rpc.io/bnb',
     chain_id=56,
     eip1559_tx=True,
@@ -197,7 +197,7 @@ BNB = Network(
 )
 
 Linea = Network(
-    name='linea',
+    name='Linea',
     rpc='https://1rpc.io/linea',
     chain_id=59144,
     eip1559_tx=True,
@@ -205,7 +205,7 @@ Linea = Network(
     explorer='https://lineascan.build/'
 )
 zkSync = Network(
-    name='zksync',
+    name='zkSync',
     rpc='https://1rpc.io/zksync2-era',
     chain_id=324,
     eip1559_tx=True,

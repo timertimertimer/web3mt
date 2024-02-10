@@ -1,16 +1,26 @@
-import asyncio
-import asyncio.exceptions
+import os
 import re
 import json
+import random
+import asyncio
 import configparser
-from logger import logger
+from typing import Callable, Any
 from pathlib import Path
+from dotenv import load_dotenv
 
-import web3.main
-import web3.auto
+from aiohttp.client import ClientSession
+from aiohttp import ServerDisconnectedError, ClientConnectionError, ClientResponseError
+from aiohttp_proxy import ProxyConnector
+from better_proxy import Proxy
+
 from eth_account import Account
-from web3 import Web3
-from web3.eth import AsyncEth
+
+from web3db.models import Profile
+from web3db.utils import DEFAULT_UA
+
+from logger import logger
+
+load_dotenv()
 
 PRICE_FACTOR = 1.1
 INCREASE_GAS = 1.1
@@ -18,6 +28,8 @@ Z8 = 10 ** 8
 Z18 = 10 ** 18
 config = configparser.ConfigParser()
 MWD = Path(__file__).parent
+
+RETRY_COUNT = int(os.getenv('RETRY_COUNT'))
 
 
 def get_config_section(section: str) -> dict:
@@ -53,53 +65,6 @@ def get_accounts(file_path: str = None) -> list[Account] | list:
     return accounts
 
 
-async def get_web3(node_url: str):
-    w3: web3.main.Web3 = Web3(Web3.AsyncHTTPProvider(node_url), modules={'eth': (AsyncEth,)}, middlewares=[])
-    if await w3.is_connected():
-        logger.info(f'Successfully connected to {node_url}')
-        return w3
-    logger.error(f'Failed to connect to {node_url}')
-
-
-async def get_chain_id(provider: web3.auto.Web3) -> int:
-    try:
-        return await provider.eth.chain_id
-
-    except (asyncio.exceptions.TimeoutError, TimeoutError):
-        return await get_chain_id(provider=provider)
-
-    except Exception as error:
-        if not str(error):
-            return get_chain_id(provider=provider)
-
-
-async def get_nonce(provider: web3.auto.Web3,
-                    address: str) -> int:
-    try:
-        return await provider.eth.get_transaction_count(address)
-
-    except (asyncio.exceptions.TimeoutError, TimeoutError):
-        return await get_nonce(provider=provider,
-                               address=address)
-
-    except Exception as error:
-        if not str(error):
-            return get_nonce(provider=provider,
-                             address=address)
-
-
-async def get_gwei(provider: web3.auto.Web3) -> int:
-    try:
-        return await provider.eth.gas_price
-
-    except (asyncio.exceptions.TimeoutError, TimeoutError):
-        return await get_gwei(provider=provider)
-
-    except Exception as error:
-        if not str(error):
-            return get_gwei(provider=provider)
-
-
 def read_json(path: str, encoding: str = None) -> list | dict:
     with open(path, encoding=encoding) as file:
         return json.load(file)
@@ -108,3 +73,78 @@ def read_json(path: str, encoding: str = None) -> list | dict:
 def read_txt(path: str, encoding: str = None) -> str:
     with open(path, encoding=encoding) as file:
         return file.read()
+
+
+class ProfileSession(ClientSession):
+    def __init__(self, profile: Profile, **kwargs) -> None:
+        self.profile = profile
+        verify_ssl = kwargs.get('verify_ssl', False)
+        headers = kwargs.pop('headers', {'User-Agent': DEFAULT_UA})
+        super().__init__(
+            connector=ProxyConnector.from_url(
+                url=Proxy.from_str(proxy=profile.proxy.proxy_string).as_url, verify_ssl=verify_ssl
+            ),
+            headers=headers,
+            **kwargs
+        )
+
+    def retry(func: Callable) -> Callable:
+        async def wrapper(self, *args, **kwargs) -> Any:
+            method = kwargs.get('method')
+            url = kwargs.get('url', 'unknown url')
+            delay = kwargs.get('delay', random.uniform(5, 10))
+            echo = kwargs.get('echo', True)
+            if echo:
+                logger.info(f'{method} {url}', id=self.profile.id)
+            for i in range(RETRY_COUNT):
+                try:
+                    response, data = await func(self, *args, **kwargs)
+                    if not kwargs.get('follow_redirects'):
+                        response.raise_for_status()
+                    if echo:
+                        logger.info(f'Sleeping after request {delay} seconds...', id=self.profile.id)
+                    await asyncio.sleep(delay)
+                    return response, data
+                except ServerDisconnectedError as e:
+                    if echo:
+                        logger.error(e.message, id=self.profile.id)
+                        logger.info(f'Retrying {i + 1}', id=self.profile.id)
+                        logger.info(f'Sleeping after request {delay} seconds...', id=self.profile.id)
+                    await asyncio.sleep(delay)
+                    continue
+                except (ClientResponseError, ClientConnectionError) as e:
+                    if echo:
+                        logger.error(f'{url} {e.message}', id=self.profile.id)
+                    raise e
+            else:
+                if echo:
+                    logger.info(f'Tried to retry {RETRY_COUNT} times. Nothing can do anymore :(', id=self.profile.id)
+                return None
+
+        return wrapper
+
+    @retry
+    async def request(
+            self,
+            method: str,
+            url: str,
+            params: dict = None,
+            data: str = None,
+            json: dict = None,
+            follow_redirects: bool = False,
+            delay: bool = True,
+            echo: bool = True
+    ):
+        response = await super().request(
+            method=method,
+            url=url,
+            params=params,
+            data=data,
+            json=json,
+            allow_redirects=follow_redirects
+        )
+        if response.content_type in ['text/html', 'application/octet-stream', 'text/plain']:
+            data = await response.text()
+        else:
+            data = await response.json()
+        return response, data

@@ -1,9 +1,5 @@
-from typing import Callable, Any
-
-from aiohttp.client_exceptions import ServerDisconnectedError
 from better_automation.discord import DiscordClient
 from yarl import URL
-from logger import logger
 
 
 class DiscordClientModified(DiscordClient):
@@ -40,29 +36,4 @@ class DiscordClientModified(DiscordClient):
         return bind_code
 
 
-def retry(n: int):
-    def wrapper(func: Callable) -> Callable:
-        async def inner(*args, **kwargs) -> Any:
-            for i in range(n):
-                try:
-                    response, data = await func(*args, **kwargs)
-                    if not kwargs.get('follow_redirects'):
-                        response.raise_for_status()
-                    return response, data
-                except ServerDisconnectedError as e:
-                    logger.error(e.message)
-                    logger.info(f'Retrying {i + 1}')
-                    continue
-            else:
-                logger.info(f'Tried to retry {n} times. Nothing can do anymore :(')
-                return None
-
-        return inner
-
-    return wrapper
-
-
-__all__ = [
-    'DiscordClientModified',
-    'retry'
-]
+__all__ = ['DiscordClientModified']

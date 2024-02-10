@@ -1,0 +1,20 @@
+query Current_token_ownerships($owner_address: String, $token_data_id_hash: String) {
+    current_token_ownerships(
+        where: {
+            owner_address: {
+                _eq: $owner_address
+            }
+            current_token_data: {
+                token_data_id_hash: {
+                    _eq: $token_data_id_hash
+                }
+            }
+        }
+    ) {
+        amount
+        collection_name
+        creator_address
+        name
+    }
+}
+

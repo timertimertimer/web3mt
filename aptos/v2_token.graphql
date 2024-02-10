@@ -1,0 +1,17 @@
+query MyQuery($owner_address: String, $collection_id: String) {
+    current_token_ownerships_v2(
+        where: {
+            current_token_data: {
+                current_collection: {
+                    collection_id: {_eq: $collection_id}
+                }
+            },
+            owner_address: {_eq: $owner_address}
+        }
+    ) {
+        storage_id
+        current_token_data {
+            token_name
+        }
+    }
+}

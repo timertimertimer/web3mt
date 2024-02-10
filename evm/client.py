@@ -7,7 +7,7 @@ from web3.eth import AsyncEth
 from web3.exceptions import ABIFunctionNotFound
 from web3.middleware import geth_poa_middleware
 
-from .models import TokenAmount, Network
+from evm.models import TokenAmount, Network
 from logger import logger
 
 
@@ -214,5 +214,7 @@ class Client:
         )
         if echo:
             logger.info(
-                f'{address or self.account.address} | Balance - {float(balance.Ether)} {self.network.coin_symbol}')
+                f'{address or self.account.address} | '
+                f'Balance - {float(balance.Ether)} {self.network.coin_symbol} ({self.network.name})'
+            )
         return balance
