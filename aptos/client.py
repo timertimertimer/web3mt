@@ -9,7 +9,7 @@ from logger import logger
 from utils import read_txt, Z8, ProfileSession
 
 
-class AptosClient(RestClient):
+class Client(RestClient):
     NODE_URL = "https://fullnode.mainnet.aptoslabs.com/v1"
     GRAPHQL_URL = "https://indexer.mainnet.aptoslabs.com/v1/graphql"
 
@@ -34,7 +34,7 @@ class AptosClient(RestClient):
                 logger.error(f"{str(self.account_.address())[:6]} | {e}", id=self.profile.id)
                 return False
 
-    async def balance(self, ledger_version: int = None) -> float:
+    async def balance(self) -> float:
         try:
             balance = await super().account_balance(self.account_.address()) / Z8
             logger.info(f'{str(self.account_.address())} | {balance} APT', id=self.profile.id)

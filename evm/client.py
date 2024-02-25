@@ -1,75 +1,93 @@
-from aiohttp import ClientSession
-from eth_account import Account
-from hexbytes import HexBytes
-from web3 import Web3
-from typing import Optional
-from web3.eth import AsyncEth
-from web3.exceptions import ABIFunctionNotFound
-from web3.middleware import geth_poa_middleware
+import os
 
+from hexbytes import HexBytes
+from dotenv import load_dotenv
+from typing import Optional
+
+from web3 import AsyncWeb3, Web3
+from web3.contract import AsyncContract
+from web3.eth import AsyncEth
+from web3.exceptions import ABIFunctionNotFound, ContractLogicError
+from web3.middleware import async_geth_poa_middleware
+from eth_account import Account
+from web3.net import AsyncNet
+from okx.MarketData import MarketAPI
+
+from web3db.models import Profile
+from web3db.utils import decrypt
+
+from evm.config import TOKEN_ABI
 from evm.models import TokenAmount, Network
 from logger import logger
+
+load_dotenv()
+okx_api_key = os.getenv('OKX_API_KEY')
+okx_api_secret = os.getenv('OKX_API_SECRET')
+okx_passphrase = os.getenv('OKX_API_PASSPHRASE')
 
 
 class Client:
     default_abi = None
+    token_abi = TOKEN_ABI
 
     def __init__(
             self,
-            account: Account,
-            network: Network
+            network: Network,
+            profile: Profile = None,
+            account: Account = None,
+            proxy: str = None
     ):
-        self.account = account
+        self.profile = profile
+        self.account = Account.from_key(decrypt(profile.evm_private, os.getenv('PASSPHRASE'))) if profile else account
         self.network = network
-        self.w3 = Web3(Web3.AsyncHTTPProvider(
-            endpoint_uri=self.network.rpc),
-            modules={'eth': (AsyncEth,)},
-            middlewares=[]
+        self.w3 = Web3(
+            Web3.AsyncHTTPProvider(self.network.rpc, request_kwargs={'proxy': proxy}),
+            modules={'eth': (AsyncEth,), 'net': (AsyncNet,)},
+            middlewares=[async_geth_poa_middleware]
         )
 
     async def nonce(self):
         return await self.w3.eth.get_transaction_count(self.account.address)
 
-    async def get_decimals(self, contract_address: str) -> int:
+    async def get_decimals(self, contract: AsyncContract = None, token_address: str = None) -> int:
+        if not contract:
+            contract = self.w3.eth.contract(
+                address=AsyncWeb3.to_checksum_address(token_address),
+                abi=self.token_abi
+            )
         try:
-            return int(await (self.w3.eth.contract(
-                address=Web3.to_checksum_address(contract_address),
-                abi=self.default_abi
-            )).functions.decimals().call())
-        except ABIFunctionNotFound as e:
+            return int(await contract.functions.decimals().call())
+        except (ABIFunctionNotFound, ContractLogicError) as e:
             return 0
 
-    async def balance_of(self, contract_address: str, address: Optional[str] = None) -> TokenAmount:
+    async def balance_of(self, contract: AsyncContract = None, token_address: str = None,
+                         address: Optional[str] = None) -> TokenAmount:
         if not address:
             address = self.account.address
-        contract = self.w3.eth.contract(address=Web3.to_checksum_address(contract_address), abi=self.default_abi)
+        if not contract:
+            contract = self.w3.eth.contract(address=AsyncWeb3.to_checksum_address(token_address), abi=self.token_abi)
         amount = await contract.functions.balanceOf(address).call()
-        decimals = await self.get_decimals(contract_address=contract_address)
+        decimals = await self.get_decimals(contract=contract)
         return TokenAmount(
             amount=amount,
             decimals=decimals,
             wei=True
         )
 
-    async def get_allowance(self, token_address: str, spender: str) -> TokenAmount:
-        contract = self.w3.eth.contract(address=Web3.to_checksum_address(token_address), abi=self.default_abi)
+    async def get_allowance(
+            self, spender: str, contract: AsyncContract = None,
+            token_address: str = None
+    ) -> TokenAmount:
+        if not contract:
+            contract = self.w3.eth.contract(address=AsyncWeb3.to_checksum_address(token_address), abi=self.token_abi)
         return TokenAmount(
             amount=await contract.functions.allowance(self.account.address, spender).call(),
-            decimals=await self.get_decimals(contract_address=token_address),
+            decimals=await self.get_decimals(contract=contract),
             wei=True
         )
 
-    async def check_balance_interface(self, token_address, min_value) -> bool:
-        logger.info(f'{self.account.address[:6]} | balanceOf | check balance of {token_address}')
-        balance = await self.balance_of(contract_address=token_address)
-        decimal = await self.get_decimals(contract_address=token_address)
-        if balance < min_value * 10 ** decimal:
-            logger.error(f'{self.account.address[:6]} | balanceOf | not enough {token_address}')
-            return False
-        return True
-
     @staticmethod
-    async def get_max_priority_fee_per_gas(w3: Web3, block: dict) -> int:
+    async def get_max_priority_fee_per_gas(w3: AsyncWeb3, block: dict) -> int:
         block_number = block['number']
         latest_block_transaction_count = w3.eth.get_block_transaction_count(block_number)
         max_priority_fee_per_gas_lst = []
@@ -93,76 +111,123 @@ class Client:
             to,
             data=None,
             from_=None,
-            increase_gas=1.,
+            increase_gas=1.1,
             value=None,
             max_priority_fee_per_gas: Optional[int] = None,
             max_fee_per_gas: Optional[int] = None
-    ) -> tuple[bool, Exception | HexBytes]:
+    ) -> tuple[bool, Exception | HexBytes | str]:
         if not from_:
             from_ = self.account.address
 
         tx_params = {
             'chainId': self.network.chain_id,
             'nonce': await self.nonce(),
-            'from': Web3.to_checksum_address(from_),
-            'to': Web3.to_checksum_address(to),
+            'from': AsyncWeb3.to_checksum_address(from_),
+            'to': AsyncWeb3.to_checksum_address(to),
         }
         if data:
             tx_params['data'] = data
+        if value:
+            tx_params['value'] = value
 
         if self.network.eip1559_tx:
-            w3 = Web3(provider=Web3.HTTPProvider(endpoint_uri=self.network.rpc))
-            w3.middleware_onion.inject(geth_poa_middleware, layer=0)
-
-            last_block = w3.eth.get_block('latest')
-            if not max_priority_fee_per_gas:
+            last_block = await self.w3.eth.get_block('latest')
+            if max_priority_fee_per_gas is None:
                 # max_priority_fee_per_gas = await Client.get_max_priority_fee_per_gas(w3=w3, block=last_block)
                 max_priority_fee_per_gas = await self.w3.eth.max_priority_fee
-            if not max_fee_per_gas:
+            tx_params['maxPriorityFeePerGas'] = max_priority_fee_per_gas
+            if max_fee_per_gas is None:
                 base_fee = int(last_block['baseFeePerGas'] * increase_gas)
                 max_fee_per_gas = base_fee + max_priority_fee_per_gas
-            tx_params['maxPriorityFeePerGas'] = max_priority_fee_per_gas
             tx_params['maxFeePerGas'] = max_fee_per_gas
 
         else:
             tx_params['gasPrice'] = self.w3.eth.gas_price
 
-        if value:
-            tx_params['value'] = value
-
         try:
             tx_params['gas'] = int(await self.w3.eth.estimate_gas(tx_params) * increase_gas)
-        except Exception as err:
-            logger.error(f'{self.account.address} | Transaction failed | {err}')
+        except ContractLogicError as err:
+            logger.error(
+                f'{f"{self.profile.id} | " if self.profile else ""}{self.account.address} | Transaction failed | {err}'
+            )
             return False, err
-        sign = self.w3.eth.account.sign_transaction(tx_params, self.account.key.hex())
-        try:
-            tx_hash = await self.w3.eth.send_raw_transaction(sign.rawTransaction)
-        except Exception as e:
-            logger.error(f'{self.account.address} | {e}')
-            return False, e
-        logger.success(f'{self.account.address} | Transaction {tx_hash.hex()} sent')
-        return True, tx_hash.hex()
+        while True:
+            sign = self.w3.eth.account.sign_transaction(tx_params, self.account.key.hex())
 
-    async def verif_tx(self, tx_hash) -> bool:
+            try:
+                tx_hash = (await self.w3.eth.send_raw_transaction(sign.rawTransaction)).hex()
+                break
+            except ValueError as e:
+                if 'invalid nonce' in e.args[0]["message"]:
+                    tx_params['nonce'] += 1
+                    continue
+                logger.error(
+                    f'{f"{self.profile.id} | " if self.profile else ""}{self.account.address} | {e.args[0]["message"]}'
+                )
+                return False, e
+            except Exception as e:
+                logger.error(f'{f"{self.profile.id} | " if self.profile else ""}{self.account.address} | {e}')
+                return False, e
+        logger.info(
+            f'{f"{self.profile.id} | " if self.profile else ""}{self.account.address} | '
+            f'Transaction {tx_hash} sent'
+        )
+        return True, tx_hash
+
+    async def verify_transaction(self, tx_hash: str, tx_name: str) -> bool:
         try:
             data = await self.w3.eth.wait_for_transaction_receipt(tx_hash, timeout=200)
             if 'status' in data and data['status'] == 1:
-                logger.success(f'{self.account.address[:6]} | transaction was successful: {tx_hash.hex()}')
+                logger.info(
+                    f'{f"{self.profile.id} | " if self.profile else ""}{self.account.address} | '
+                    f'Transaction {tx_name} ({tx_hash}) was successful')
                 return True
             else:
-                logger.error(f'{self.account.address[:6]} | transaction failed {data["transactionHash"].hex()}')
+                logger.error(
+                    f'{f"{self.profile.id} | " if self.profile else ""}{self.account.address} | '
+                    f'Transaction {tx_name} ({tx_hash}) failed: {data["transactionHash"].hex()}'
+                )
                 return False
         except Exception as err:
-            logger.error(f'{self.account.address[:6]} | unexpected error in <verif_tx> function: {err}')
+            logger.error(
+                f'{f"{self.profile.id} | " if self.profile else ""}{self.account.address} | '
+                f'Transaction {tx_name} ({tx_hash}) failed: {err}'
+            )
             return False
 
-    async def approve(self, token_address, spender, amount: Optional[TokenAmount] = None):
-        contract = self.w3.eth.contract(
-            address=Web3.to_checksum_address(token_address),
-            abi=self.default_abi
-        )
-        return await self.send_transaction(
+    async def approve(
+            self, spender: str, contract: AsyncContract = None, token_address: str = None,
+            amount: TokenAmount | int = None, abi: dict = None
+    ) -> bool:
+        if isinstance(amount, int):
+            amount = TokenAmount(amount, wei=True)
+        if not contract:
+            contract = self.w3.eth.contract(
+                address=AsyncWeb3.to_checksum_address(token_address),
+                abi=abi or self.token_abi
+            )
+        balance = await self.balance_of(contract=contract)
+        token_symbol = await contract.functions.symbol().call()
+
+        if balance.Wei <= 0:
+            logger.error(
+                f'{f"{self.profile.id} | " if self.profile else ""}{self.account.address} | '
+                f'{balance.Wei} {token_symbol}. Can\'t approve zero balance'
+            )
+            return False
+
+        if not amount or amount.Wei > balance.Wei:
+            amount = balance
+
+        approved = await self.get_allowance(contract=contract, spender=spender)
+        if amount.Wei <= approved.Wei:
+            logger.info(
+                f'{f"{self.profile.id} | " if self.profile else ""}{self.account.address} | '
+                f'Already approved {approved.Ether} {token_symbol}'
+            )
+            return True
+
+        ok, tx_hash = await self.send_transaction(
             to=token_address,
             data=contract.encodeABI('approve',
                                     args=(
@@ -170,42 +235,20 @@ class Client:
                                         amount.Wei
                                     ))
         )
+        return await self.verify_transaction(tx_hash, f'Approve {token_symbol}')
 
-    async def approve_interface(self, token_address: str, spender: str, amount: Optional[TokenAmount] = None) -> bool:
-        decimals = await self.get_decimals(contract_address=token_address)
-        balance = await self.balance_of(contract_address=token_address)
-
-        if balance.Wei <= 0:
-            logger.error(f'{self.account.address[:6]} | approve | zero balance')
-            return False
-
-        if not amount or amount.Wei > balance.Wei:
-            amount = balance
-
-        approved = await self.get_allowance(token_address=token_address, spender=spender)
-        if amount.Wei <= approved.Wei:
-            logger.success(f'{self.account.address[:6]} | approve | already approved')
-            return True
-
-        tx_hash = await self.approve(token_address=token_address, spender=spender, amount=amount)
-        if not await self.verif_tx(tx_hash=tx_hash):
-            logger.error(f'{self.account.address[:6]} | approve | {token_address} for spender {spender}')
-            return False
-        logger.success(f'{self.account.address[:6]} | approve | approved')
-        return True
-
-    async def get_eth_price(self, token='ETH'):
-        token = token.upper()
-        async with ClientSession() as session:
-            response = await session.get(f'https://api.binance.com/api/v3/depth?limit=1&symbol={token}USDT')
-            if response.status != 200:
-                logger.info(f'code: {response.status} | json: {response.json()}')
-                return None
-            result_dict = await response.json()
-            if 'asks' not in result_dict:
-                logger.info(f'code: {response.status} | json: {response.json()}')
-                return None
-            return float(result_dict['asks'][0][0])
+    @staticmethod
+    async def get_token_price(token='ETH'):
+        ticker = token.upper()
+        okx_market = MarketAPI(
+            api_key=okx_api_key,
+            api_secret_key=okx_api_secret,
+            passphrase=okx_passphrase,
+            flag='0',
+            debug=False
+        )
+        price = float(okx_market.get_ticker(f'{ticker}-USDT')['data'][0]['askPx'])
+        return price
 
     async def get_native_balance(self, address: str = None, echo: bool = False) -> TokenAmount:
         balance = TokenAmount(
@@ -214,7 +257,7 @@ class Client:
         )
         if echo:
             logger.info(
-                f'{address or self.account.address} | '
-                f'Balance - {float(balance.Ether)} {self.network.coin_symbol} ({self.network.name})'
+                f'{f"{self.profile.id} | " if self.profile else ""}{address or self.account.address} | '
+                f'Balance - {float(balance.Ether)} {self.network.coin_symbol} ({self.network.name})',
             )
         return balance

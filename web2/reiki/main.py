@@ -7,9 +7,10 @@ import random
 
 from datetime import datetime, timezone, timedelta
 
+from better_automation.discord.errors import Unauthorized
 from dotenv import load_dotenv
 
-from aiohttp.client_exceptions import ClientResponseError, ClientConnectionError
+from aiohttp.client_exceptions import ClientResponseError
 from better_automation.twitter import TwitterClient, TwitterAccount
 
 from eth_account import Account
@@ -19,15 +20,12 @@ from web3db import DBHelper
 from web3db.models import Profile
 from web3db.utils import decrypt, DEFAULT_UA
 
-from evm.client import Client
-from evm.config import REIKI_ABI_PATH
 from evm.reiki import mint
 from web2.reiki.db import *
 from web2.reiki.config import *
 from web2.utils import *
 
-from utils import logger, read_json, ProfileSession
-from evm.models import BNB
+from utils import logger, ProfileSession
 from web2.models import DiscordAccountModified
 
 load_dotenv()
@@ -37,16 +35,13 @@ class Reiki:
     def __init__(self, profile: Profile):
         headers['User-Agent'] = DEFAULT_UA
         self.session = ProfileSession(profile)
-        self.evm_account = Account.from_key(decrypt(profile.evm_private, os.getenv('PASSPHRASE')))
-        if not self.evm_account:
-            logger.error("Couldn't decrypt private", id=profile.id)
         self.profile = profile
 
     async def __aenter__(self):
         return self
 
     async def __aexit__(self, exc_type, exc_val, exc_tb):
-        logger.success('Tasks completed', id=self.profile.id)
+        logger.success(f'{self.profile.id} | Tasks completed')
         await self.session.connector.close()
         await self.session.close()
 
@@ -56,11 +51,11 @@ class Reiki:
             if not data['referrerWalletAddress']:
                 await self.refer()
             else:
-                logger.success(f'Already referred by {data["referrerWalletAddress"]}', id=self.profile.id)
+                logger.success(f'{self.profile.id} | Already referred by {data["referrerWalletAddress"]}')
             await self.claim_gifts()
             all_tasks = [
                 self.claim_daily(),
-                self.quizes(),
+                self.quizzes(),
                 self.connect_socials()
             ]
             for task in random.sample(all_tasks, len(all_tasks)):
@@ -75,9 +70,9 @@ class Reiki:
                 response, data = await self.session.request(method='GET', url=url)
                 response.raise_for_status()
                 logger.success(
+                    f'{self.profile.id} | '
                     f'Points: today - {data["today"] if "today" in data else 0}, '
                     f'total - {data["total"] if "total" in data else 0}',
-                    id=self.profile.id
                 )
                 return
             except ClientResponseError as e:
@@ -86,61 +81,69 @@ class Reiki:
     async def create_bearer_token(self):
         nonce = await self.web3_nonce()
         token = await self.web3_challenge(nonce)
-        await insert_record(self.evm_account.address, token)
+        await insert_record(self.profile.evm_address, token)
         self.session.headers['Authorization'] = f'Bearer {token}'
 
     async def web3_nonce(self) -> str:
         url = REIKI_API + "account/web3/web3_nonce"
         payload = {
-            "address": self.evm_account.address
+            "address": self.profile.evm_address
         }
         response, data = await self.session.request(method='POST', url=url, json=payload)
         nonce = data['nonce']
-        logger.success(f'Nonce: {nonce}', id=self.profile.id)
+        logger.success(f'{self.profile.id} | Nonce: {nonce}')
         return nonce
 
     async def web3_challenge(self, nonce: str) -> str:
         url = REIKI_API + "account/web3/web3_challenge"
         message, signature = self.message_and_sign_message(nonce)
         payload = {
-            "address": self.evm_account.address,
+            "address": self.profile.evm_address,
             'challenge': json.dumps({'msg': message}),
             'nonce': nonce,
             'signature': signature
         }
         response, data = await self.session.request(method='POST', url=url, json=payload)
         token = data['extra']['token']
-        logger.success(f'Bearer token: {token}', id=self.profile.id)
+        logger.success(f'{self.profile.id} | Bearer token: {token}')
         return token
 
     def message_and_sign_message(self, nonce: str) -> tuple[str, str]:
         timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
-        message = f'reiki.web3go.xyz wants you to sign in with your Ethereum account:\n{self.evm_account.address}\n\nWelcome to Web3Go! Click to sign in and accept the Web3Go Terms of Service. This request will not trigger any blockchain transaction or cost any gas fees. Your authentication status will reset after 7 days. Wallet address: {self.evm_account.address} Nonce: {nonce}\n\nURI: https://reiki.web3go.xyz\nVersion: 1\nChain ID: 56\nNonce: {nonce}\nIssued At: {timestamp}'
+        message = (
+            f'reiki.web3go.xyz wants you to sign in with your Ethereum account:\n{self.profile.evm_address}\n\n'
+            f'Welcome to Web3Go! Click to sign in and accept the Web3Go Terms of Service. This request will not'
+            f' trigger any blockchain transaction or cost any gas fees. Your authentication status will reset'
+            f' after 7 days. Wallet address: {self.profile.evm_address} Nonce: {nonce}\n\n'
+            f'URI: https://reiki.web3go.xyz\nVersion: 1\nChain ID: 56\nNonce: {nonce}\nIssued At: {timestamp}'
+        )
 
-        sign = w3.eth.account.sign_message(encode_defunct(text=message),
-                                           private_key=self.evm_account.key).signature.hex()
+        sign = w3.eth.account.sign_message(
+            encode_defunct(text=message),
+            private_key=Account.from_key(decrypt(self.profile.evm_private, os.getenv('PASSPHRASE'))).key.hex()
+        ).signature.hex()
         return message, sign
 
     async def refer(self):
         url = REIKI_API + 'nft/sync'
-        referal_code = os.getenv('REIKI_REFERAL_CODE')
-        self.session.headers['X-Referral-Code'] = referal_code
+        referral_code = os.getenv('REIKI_REFERAL_CODE')
+        self.session.headers['X-Referral-Code'] = referral_code
         response, data = await self.session.request(method='GET', url=url)
         if data['msg'] == 'success':
-            logger.success("Refered by {referal_code}", id=self.profile.id)
+            logger.success(f"{self.profile.id} | Referred by {referral_code}")
         else:
-            logger.error(data, id=self.profile.id)
+            logger.error(f'{self.profile.id} | {data}')
 
     async def claim_gifts(self) -> None:
         url = REIKI_API + 'gift'
         response, data = await self.session.request(method='GET', url=url, params={'type': 'recent'})
         if response.status == 200:
             if data:
-                logger.info(f'Got gifts', id=self.profile.id)
+                logger.info(f'{self.profile.id} | Got gifts')
             else:
-                logger.success(f'All gifts are opened', id=self.profile.id)
+                logger.success(f'{self.profile.id} | All gifts are opened')
         else:
-            logger.error(f'{data["message"]}', id=self.profile.id)
+            logger.error(f'{self.profile.id} | {data["message"]}')
         for gift in data:
             gift_id = gift['id']
             gift_name = gift['name']
@@ -148,11 +151,11 @@ class Reiki:
                 url = REIKI_API + f'gift/open/{gift_id}'
                 response, data = await self.session.request(method='POST', url=url)
                 if data == 'true':
-                    logger.success(f'Opened gift - {gift_name}', id=self.profile.id)
+                    logger.success(f'{self.profile.id} | Opened gift - {gift_name}')
                 else:
-                    logger.error("Couldn't open gift - {gift_name}", id=self.profile.id)
+                    logger.error(f"{self.profile.id} | Couldn't open gift - {gift_name}")
             else:
-                logger.success(f'Already opened gift - {gift_name}', id=self.profile.id)
+                logger.success(f'{self.profile.id} | Already opened gift - {gift_name}')
 
     async def claim_daily(self) -> None:
         url = REIKI_API + "checkin/points/his"
@@ -173,19 +176,19 @@ class Reiki:
                     await self.session.request(
                         method='PUT', url=url, params={'day': datetime.now().strftime("%Y-%m-%d")}
                     )
-                    logger.success(f'Daily claimed', id=self.profile.id)
+                    logger.success(f'{self.profile.id} | Daily claimed')
                 else:
-                    logger.success("Daily already claimed", id=self.profile.id)
+                    logger.success(f"{self.profile.id} | Daily already claimed")
                 break
 
-    async def quizes(self) -> None:
+    async def quizzes(self) -> None:
         url = REIKI_API + 'quiz'
         while True:
             try:
                 response, data = await self.session.request(method='GET', url=url)
                 break
             except ClientResponseError as e:
-                logger.error(f'{url} {e.message}', id=self.profile.id)
+                logger.error(f'{self.profile.id} | {url} {e.message}')
                 if e.status == 401:
                     await self.create_bearer_token()
                 else:
@@ -193,28 +196,28 @@ class Reiki:
         qs = random.sample(data, len(data))
         for quiz in qs:
             if quiz['currentProgress'] == quiz['totalItemCount']:
-                logger.success(f'Quiz {quiz["title"]} already completed', id=self.profile.id)
+                logger.success(f'{self.profile.id} | Quiz {quiz["title"]} already completed')
                 continue
             quiz_id = quiz['id']
             url = REIKI_API + 'quiz/' + quiz_id
             response, data = await self.session.request(method='GET', url=url)
             questions = data['items']
             logger.info(
-                f'Quiz {quiz["title"]}. {quiz["totalItemCount"] - quiz["currentProgress"]} questions left',
-                id=self.profile.id
+                f'{self.profile.id} | Quiz {quiz["title"]}. {quiz["totalItemCount"] - quiz["currentProgress"]} '
+                f'questions left'
             )
             for i, question in enumerate(questions[quiz['currentProgress']:], start=quiz['currentProgress']):
                 if quiz_id == '631bb81f-035a-4ad5-8824-e219a7ec5ccb' and i == 0:
-                    payload = {'answers': [self.evm_account.address]}
+                    payload = {'answers': [self.profile.evm_address]}
                 else:
-                    payload = {'answers': [QUIZES[quiz_id][i]]}
+                    payload = {'answers': [QUIZZES[quiz_id][i]]}
                 question_id = question['id']
                 url = REIKI_API + 'quiz/' + question_id + '/answer'
                 response, data = await self.session.request(method='POST', url=url, json=payload)
                 if response.status == 201 or data['message'] == 'Already answered':
-                    logger.success(data["message"], id=self.profile.id)
+                    logger.success(f'{self.profile.id} | {data["message"]}')
                 else:
-                    logger.info(data["message"], id=self.profile.id)
+                    logger.info(f'{self.profile.id} | {data["message"]}')
 
     async def profile_(self):
         url = REIKI_API + 'profile'
@@ -228,11 +231,11 @@ class Reiki:
             'discord': self.connect_discord
         }
         if data['email'] == self.profile.email.login:
-            logger.success(f'Email {data["email"]} already connected', id=self.profile.id)
+            logger.success(f'{self.profile.id} | Email {data["email"]} already connected')
             social_tasks.pop('email')
         for social in data['socials']:
             social_tasks.pop(social['type'])
-            logger.success(f'{social["type"].capitalize()} already connected', id=self.profile.id)
+            logger.success(f'{self.profile.id} | {social["type"].capitalize()} already connected')
         for task in social_tasks:
             await social_tasks[task]()
 
@@ -242,16 +245,19 @@ class Reiki:
             method='PATCH', url=url, json={'email': self.profile.email.login, 'name': None}
         )
         if data == 'true':
-            logger.success(f'Email connected', id=self.profile.id)
+            logger.success(f'{self.profile.id} | Email connected')
         else:
-            logger.error("Couldn't connect email - {data}", id=self.profile.id)
+            logger.error(f"{self.profile.id} | Couldn't connect email - {data}")
 
     async def connect_twitter(self) -> bool:
+        if not self.profile.twitter.ready:
+            logger.warning(f'{self.profile.id} | Twitter is not ready, skipping')
+            return False
         url = REIKI_API + 'oauth/twitter2/'
         try:
             response, data = await self.session.request(method='GET', url=url, follow_redirects=True)
         except ClientResponseError as e:
-            logger.error(f'{url} {e.message}', id=self.profile.id)
+            logger.error(f'{self.profile.id} | {url} {e.message}')
             return False
         payload = {**response.url.query}
         payload.pop('nonce')
@@ -268,15 +274,19 @@ class Reiki:
         try:
             response, data = await self.session.request(method='GET', url=url, follow_redirects=True)
         except ClientResponseError as e:
-            logger.error(f'{url} {e.message}', id=self.profile.id)
+            logger.error(f'{self.profile.id} | {url} {e.message}')
             return False
         payload = {**response.url.query}
         payload.pop('nonce')
-        code = await DiscordClientModified(
-            account=DiscordAccountModified(self.profile.discord.auth_token),
-            proxy=str(self.session.connector.proxy_url),
-            verify=False
-        ).oauth_2(**payload)
+        try:
+            code = await DiscordClientModified(
+                account=DiscordAccountModified(self.profile.discord.auth_token),
+                proxy=str(self.session.connector.proxy_url),
+                verify=False
+            ).oauth_2(**payload)
+        except Unauthorized as e:
+            logger.error(f'{self.profile.id} | Discord token not valid, can\'t get oauth code')
+            return
         await self.callback(url, code, response.url.query['state'])
 
     async def callback(self, url: str, code: str, state: str):
@@ -288,32 +298,29 @@ class Reiki:
             follow_redirects=True
         )
         if response.url.query.get('success') == 'true':
-            logger.success(f"{url} connected", id=self.profile.id)
+            logger.success(f"{self.profile.id} | {url} connected")
         else:
-            logger.error(response.url, id=self.profile.id)
+            logger.error(f"{self.profile.id} | {response.url}")
 
 
 async def start(profile, choice: int) -> None:
     async with Reiki(profile) as reiki:
-        token = await get_token_by_address(reiki.evm_account.address)
+        token = await get_token_by_address(reiki.profile.evm_address)
         if token:
             reiki.session.headers['Authorization'] = f'Bearer {token}'
-        client = Client(reiki.evm_account, BNB)
-        client.default_abi = read_json(REIKI_ABI_PATH)
-        if not await mint(client):
+        if not await mint(profile):
             return
         await reiki.me()
         await reiki.start_tasks(choice == 1)
 
 
 async def main():
-    print('1. Do tasks')
-    print('2. Claim daily')
-    choice = int(input())
+    choice = int(input('1. Do tasks\n2. Claim daily\n'))
     await create_table()
 
     tasks = []
-    profiles = await get_profiles(random_proxy_distinct=True, limit=1)
+    db = DBHelper(os.getenv('CONNECTION_STRING'))
+    profiles = await db.get_all_from_table(Profile)
     for profile in profiles:
         tasks.append(asyncio.create_task(start(profile, choice)))
     await asyncio.gather(*tasks)

@@ -1,5 +1,6 @@
 import os
 import re
+import sys
 import json
 import random
 import asyncio
@@ -8,10 +9,10 @@ from typing import Callable, Any
 from pathlib import Path
 from dotenv import load_dotenv
 
+from better_proxy import Proxy
+from aiohttp_proxy import ProxyConnector
 from aiohttp.client import ClientSession
 from aiohttp import ServerDisconnectedError, ClientConnectionError, ClientResponseError
-from aiohttp_proxy import ProxyConnector
-from better_proxy import Proxy
 
 from eth_account import Account
 
@@ -65,12 +66,12 @@ def get_accounts(file_path: str = None) -> list[Account] | list:
     return accounts
 
 
-def read_json(path: str, encoding: str = None) -> list | dict:
+def read_json(path: str | Path, encoding: str = None) -> list | dict:
     with open(path, encoding=encoding) as file:
         return json.load(file)
 
 
-def read_txt(path: str, encoding: str = None) -> str:
+def read_txt(path: str | Path, encoding: str = None) -> str:
     with open(path, encoding=encoding) as file:
         return file.read()
 
@@ -114,7 +115,7 @@ class ProfileSession(ClientSession):
                     continue
                 except (ClientResponseError, ClientConnectionError) as e:
                     if echo:
-                        logger.error(f'{url} {e.message}', id=self.profile.id)
+                        logger.error(f'{url} {e}', id=self.profile.id)
                     raise e
             else:
                 if echo:
@@ -129,7 +130,7 @@ class ProfileSession(ClientSession):
             method: str,
             url: str,
             params: dict = None,
-            data: str = None,
+            data: dict = None,
             json: dict = None,
             follow_redirects: bool = False,
             delay: bool = True,
@@ -148,3 +149,8 @@ class ProfileSession(ClientSession):
         else:
             data = await response.json()
         return response, data
+
+
+def set_windows_event_loop_policy():
+    if sys.version_info >= (3, 8) and sys.platform.lower().startswith("win"):
+        asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())

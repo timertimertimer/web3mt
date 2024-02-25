@@ -18,7 +18,7 @@ headers = {
     'Pragma': 'no-cache',
     'Cache-Control': 'no-cache'
 }
-QUIZES = {
+QUIZZES = {
     "d5cec2e4-ef2e-4598-9963-4552e9b32ef5": ['A', 'B', 'B', 'A', 'A'],
     "0aeb6c87-8c83-4cc6-a7da-e2b0e786c67c": ['C', 'D', 'D', 'D', 'C'],
     "374a470f-2e87-4408-9817-71531bb876ad": ['A', 'D', 'C', 'B', 'C'],

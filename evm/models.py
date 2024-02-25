@@ -212,3 +212,11 @@ zkSync = Network(
     coin_symbol='ETH',
     explorer='https://explorer.zksync.io/'
 )
+ZetaChain = Network(
+    name='Zetachain',
+    rpc='https://zetachain-mainnet-archive.allthatnode.com:8545',
+    chain_id=7000,
+    eip1559_tx=True,
+    coin_symbol='ZETA',
+    explorer='https://explorer.zetachain.com/'
+)

@@ -24,8 +24,9 @@ async def check_balance_batch(network: Network):
     profiles = await db.get_all_from_table(Profile)
     tasks = []
     for profile in profiles:
-        client = Client(Account.from_key(decrypt(profile.evm_private, os.getenv('PASSPHRASE'))), network)
-        tasks.append(asyncio.create_task(client.get_native_balance()))
+        client = Client(network, profile)
+        tasks.append(asyncio.create_task(client.get_native_balance(echo=True)))
+    await asyncio.gather(*tasks)
 
 
 async def check_xp_linea():
@@ -33,15 +34,16 @@ async def check_xp_linea():
     profiles = await db.get_all_from_table(Profile)
     tasks = []
     for profile in profiles:
-        client = Client(Account.from_key(decrypt(profile.evm_private, os.getenv('PASSPHRASE'))), Linea)
+        client = Client(Linea, account=Account.from_key(decrypt(profile.evm_private, os.getenv('PASSPHRASE'))))
         client.default_abi = read_json(LXP_ABI_PATH)
-        tasks.append(asyncio.create_task(client.balance_of(lxp_contract_address)))
+        tasks.append(asyncio.create_task(client.balance_of(token_address=lxp_contract_address)))
     result = await asyncio.gather(*tasks)
     logger.success(f'Total - {sum([el.Ether for el in result])} LXP')
 
 
 async def have_balance(client: Client, ethers: float = 0.002, echo: bool = False) -> bool:
-    if (await client.get_native_balance(echo=echo)).Ether > ethers:
+    balance = await client.get_native_balance(echo=echo)
+    if balance.Ether > ethers:
         return True
     return False
 
@@ -50,15 +52,15 @@ async def get_wallets_with_balance(network: Network):
     profiles = await db.get_all_from_table(Profile)
     tasks = []
     for profile in profiles:
-        client = Client(Account.from_key(decrypt(profile.evm_private, os.getenv('PASSPHRASE'))), network)
+        client = Client(network, account=Account.from_key(decrypt(profile.evm_private, os.getenv('PASSPHRASE'))))
         tasks.append(asyncio.create_task(have_balance(client)))
     await asyncio.gather(*tasks)
 
 
-async def opbnb_bridge(account: Account, amount: float = 0.002):
-    if await have_balance(Client(account, opBNB)):
+async def opbnb_bridge(profile: Profile, amount: float = 0.002):
+    if await have_balance(Client(opBNB, profile)):
         return
-    client = Client(account, BNB)
+    client = Client(BNB, profile)
     contract_address = '0xF05F0e4362859c3331Cb9395CBC201E3Fa6757Ea'
     client.default_abi = read_json(OPBNB_BRIDGE_ABI_PATH)
     contract = client.w3.eth.contract(
