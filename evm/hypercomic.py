@@ -58,6 +58,7 @@ async def mint(profile: Profile):
     client.default_abi = read_json(HYPERCOMIC_ABI_PATH)
     enough_balance = await have_balance(client, ethers=0, echo=True)
     if not enough_balance:
+        logger.info(f'{profile.id} | No balance, skipping')
         return
     for i, contract_address in contracts.items():
         contract = client.w3.eth.contract(
@@ -85,11 +86,7 @@ async def mint(profile: Profile):
 
 
 async def main():
-    # profiles: list[Profile] = await db.get_rows_by_id(
-    #     [1, 99, 100, 101, 102, 103, 104, 105, 107, 108, 113, 114, 116],
-    #     Profile
-    # )
-    profiles: list[Profile] = await db.get_rows_by_id([1], Profile)
+    profiles: list[Profile] = await db.get_all_from_table(Profile)
     tasks = []
     for profile in profiles:
         tasks.append(asyncio.create_task(mint(profile)))

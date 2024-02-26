@@ -34,30 +34,26 @@ class ProfileSession(ClientSession):
             delay = kwargs.get('delay', random.uniform(5, 10))
             echo = kwargs.get('echo', True)
             if echo:
-                logger.info(f'{method} {url}', id=self.profile.id)
+                logger.info(f'{self.profile.id} | {method} {url}')
             for i in range(RETRY_COUNT):
                 try:
                     response, data = await func(self, *args, **kwargs)
                     if not kwargs.get('follow_redirects'):
                         response.raise_for_status()
-                    if echo:
-                        logger.info(f'Sleeping after request {delay} seconds...', id=self.profile.id)
-                    await sleep(delay)
+                    await sleep(delay, profile_id=self.profile.id)
                     return response, data
                 except ServerDisconnectedError as e:
                     if echo:
-                        logger.error(e.message, id=self.profile.id)
-                        logger.info(f'Retrying {i + 1}', id=self.profile.id)
-                        logger.info(f'Sleeping after request {delay} seconds...', id=self.profile.id)
-                    await asyncio.sleep(delay)
+                        logger.error(f'{self.profile.id} | {e.message}. Retrying {i + 1}')
+                    await sleep(delay, profile_id=self.profile.id)
                     continue
                 except (ClientResponseError, ClientConnectionError) as e:
                     if echo:
-                        logger.error(f'{url} {e}', id=self.profile.id)
+                        logger.error(f'{self.profile.id} | {url} {e}')
                     raise e
             else:
                 if echo:
-                    logger.info(f'Tried to retry {RETRY_COUNT} times. Nothing can do anymore :(', id=self.profile.id)
+                    logger.info(f'{self.profile.id} | Tried to retry {RETRY_COUNT} times. Nothing can do anymore :(')
                 return None
 
         return wrapper

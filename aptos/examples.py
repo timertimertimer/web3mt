@@ -19,11 +19,11 @@ collection_id = aptos_config['collection_id']
 async def bluemove_batch_sell(profile: Profile):
     client = Client(profile)
     balance = await client.v2_token_data(collection_id)
-    logger.info(f"{client.account_.address()} | Balance of aptmap - {balance}", id=profile.id)
+    logger.info(f"{profile.id} | {client.account_.address()} | Balance of aptmap - {balance}")
     for data in balance[:int(len(balance) * amount_percentage / 100)]:
         payload = read_json('payload.json')
         token_name = data['current_token_data']['token_name']
-        logger.info(f'Selling {token_name}', id=profile.id)
+        logger.info(f'{profile.id} | Selling {token_name}')
         storage_id = data['storage_id']
         payload['arguments'][0] = [{'inner': storage_id}]
         payload['arguments'][2] = [f'{int(price * Z8)}']
