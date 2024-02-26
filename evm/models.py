@@ -214,7 +214,7 @@ zkSync = Network(
 )
 ZetaChain = Network(
     name='Zetachain',
-    rpc='https://zetachain-mainnet-archive.allthatnode.com:8545',
+    rpc='https://zetachain-evm.blockpi.network/v1/rpc/public',
     chain_id=7000,
     eip1559_tx=True,
     coin_symbol='ZETA',

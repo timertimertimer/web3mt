@@ -5,8 +5,7 @@ from aptos_sdk.async_client import RestClient, ResourceNotFound
 from web3db.models import Profile
 from web3db.utils import decrypt
 
-from logger import logger
-from utils import read_txt, Z8, ProfileSession
+from utils import read_txt, Z8, ProfileSession, logger
 
 
 class Client(RestClient):
@@ -24,20 +23,20 @@ class Client(RestClient):
         while True:
             try:
                 txn_hash = await self.submit_transaction(self.account_, payload)
-                logger.success(f"{str(self.account_.address())} | Sent transaction {txn_hash}", id=self.profile.id)
+                logger.success(f"{self.profile.id} | {str(self.account_.address())} | Sent transaction {txn_hash}")
                 return sequence
             except Exception as e:
                 if "Transaction already in mempool with a different payload" in str(
                         e) or "SEQUENCE_NUMBER_TOO_OLD" in str(e):
                     sequence += 1
                     continue
-                logger.error(f"{str(self.account_.address())[:6]} | {e}", id=self.profile.id)
+                logger.error(f"{self.profile.id} | {str(self.account_.address())[:6]} | {e}")
                 return False
 
     async def balance(self) -> float:
         try:
             balance = await super().account_balance(self.account_.address()) / Z8
-            logger.info(f'{str(self.account_.address())} | {balance} APT', id=self.profile.id)
+            logger.info(f'{self.profile.id} | {str(self.account_.address())} | {balance} APT')
             return balance
         except ResourceNotFound:
             return 0

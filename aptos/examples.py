@@ -1,9 +1,14 @@
 import asyncio
+import os
 
+from web3db import DBHelper
 from web3db.models import Profile
 
 from utils import get_config_section, logger, read_json, Z8
 from client import Client
+from dotenv import load_dotenv
+
+load_dotenv()
 
 aptos_config = get_config_section('aptos')
 amount_percentage = float(aptos_config['amount_percentage'])
@@ -41,3 +46,22 @@ async def check_v1_token_ownership(profile: Profile):
         logger.error(f'{profile.id} | {client.account_.address()} {data["data"]["current_token_ownerships"]}')
     else:
         logger.success(f'{profile.id} | {client.account_.address()} {data["data"]["current_token_ownerships"]}')
+
+
+async def check_v2_token_ownership(profile: Profile):
+    client = Client(profile)
+    data = await client.v1_token_data(collection_id)
+    if not data['data']['current_token_ownerships']:
+        logger.error(f'{profile.id} | {client.account_.address()} {data["data"]["current_token_ownerships"]}')
+    else:
+        logger.success(f'{profile.id} | {client.account_.address()} {data["data"]["current_token_ownerships"]}')
+
+
+async def main():
+    db = DBHelper(os.getenv('CONNECTION_STRING'))
+    profiles: list[Profile] = await db.get_all_from_table(Profile)
+    await batch_balance(profiles)
+
+
+if __name__ == '__main__':
+    asyncio.run(main())

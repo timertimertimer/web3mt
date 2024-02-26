@@ -56,7 +56,7 @@ async def get_signature(proxy_string: str, nft_number: int, client: Client):
 async def mint(profile: Profile):
     client = Client(zkSync, profile)
     client.default_abi = read_json(HYPERCOMIC_ABI_PATH)
-    enough_balance, balance = await have_balance(client, ethers=0, echo=True)
+    enough_balance = await have_balance(client, ethers=0, echo=True)
     if not enough_balance:
         return
     for i, contract_address in contracts.items():
@@ -64,8 +64,8 @@ async def mint(profile: Profile):
             address=client.w3.to_checksum_address(contract_address),
             abi=client.default_abi
         )
-        if (await client.balance_of(contract_address)).Ether == 1:
-            logger.success(f'{profile.id} | {client.account.address} | Already minted')
+        if (await client.balance_of(token_address=contract_address)).Ether == 1:
+            logger.success(f'{profile.id} | {client.account.address} | Already minted NFT #{i}')
             continue
         signature = (await get_signature(proxy_string=profile.proxy.proxy_string, nft_number=i, client=client)).strip()
         if not signature.startswith('0x'):
@@ -85,21 +85,11 @@ async def mint(profile: Profile):
 
 
 async def main():
-    profiles: list[Profile] = await db.get_rows_by_id([
-        1,
-        99,
-        100,
-        101,
-        102,
-        103,
-        104,
-        105,
-        107,
-        108,
-        113,
-        114,
-        116
-    ], Profile)
+    # profiles: list[Profile] = await db.get_rows_by_id(
+    #     [1, 99, 100, 101, 102, 103, 104, 105, 107, 108, 113, 114, 116],
+    #     Profile
+    # )
+    profiles: list[Profile] = await db.get_rows_by_id([1], Profile)
     tasks = []
     for profile in profiles:
         tasks.append(asyncio.create_task(mint(profile)))

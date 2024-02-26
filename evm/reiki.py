@@ -2,11 +2,10 @@ from web3db.models import Profile
 
 from evm.config import REIKI_ABI_PATH
 from evm.client import Client
-from logger import logger
 from web3 import Web3
 
 from evm.models import BNB
-from utils import read_json
+from utils import read_json, logger
 from dotenv import load_dotenv
 
 load_dotenv()

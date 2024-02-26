@@ -1,3 +1,4 @@
+import asyncio
 import os
 
 from hexbytes import HexBytes
@@ -5,12 +6,12 @@ from dotenv import load_dotenv
 from typing import Optional
 
 from web3 import AsyncWeb3, Web3
-from web3.contract import AsyncContract
 from web3.eth import AsyncEth
+from web3.net import AsyncNet
+from web3.contract import AsyncContract
 from web3.exceptions import ABIFunctionNotFound, ContractLogicError
 from web3.middleware import async_geth_poa_middleware
 from eth_account import Account
-from web3.net import AsyncNet
 from okx.MarketData import MarketAPI
 
 from web3db.models import Profile
@@ -18,7 +19,7 @@ from web3db.utils import decrypt
 
 from evm.config import TOKEN_ABI
 from evm.models import TokenAmount, Network
-from logger import logger
+from utils import logger
 
 load_dotenv()
 okx_api_key = os.getenv('OKX_API_KEY')
@@ -35,7 +36,8 @@ class Client:
             network: Network,
             profile: Profile = None,
             account: Account = None,
-            proxy: str = None
+            proxy: str = None,
+            delay_between_requests: int = 0
     ):
         self.profile = profile
         self.account = Account.from_key(decrypt(profile.evm_private, os.getenv('PASSPHRASE'))) if profile else account
@@ -45,6 +47,7 @@ class Client:
             modules={'eth': (AsyncEth,), 'net': (AsyncNet,)},
             middlewares=[async_geth_poa_middleware]
         )
+        self.delay_between_requests = delay_between_requests
 
     async def nonce(self):
         return await self.w3.eth.get_transaction_count(self.account.address)
@@ -67,6 +70,7 @@ class Client:
         if not contract:
             contract = self.w3.eth.contract(address=AsyncWeb3.to_checksum_address(token_address), abi=self.token_abi)
         amount = await contract.functions.balanceOf(address).call()
+        await asyncio.sleep(self.delay_between_requests)
         decimals = await self.get_decimals(contract=contract)
         return TokenAmount(
             amount=amount,
@@ -80,11 +84,11 @@ class Client:
     ) -> TokenAmount:
         if not contract:
             contract = self.w3.eth.contract(address=AsyncWeb3.to_checksum_address(token_address), abi=self.token_abi)
-        return TokenAmount(
-            amount=await contract.functions.allowance(self.account.address, spender).call(),
-            decimals=await self.get_decimals(contract=contract),
-            wei=True
-        )
+        amount = await contract.functions.allowance(self.account.address, spender).call()
+        await asyncio.sleep(self.delay_between_requests)
+        decimals = await self.get_decimals(contract=contract)
+        await asyncio.sleep(self.delay_between_requests)
+        return TokenAmount(amount=amount, decimals=decimals, wei=True)
 
     @staticmethod
     async def get_max_priority_fee_per_gas(w3: AsyncWeb3, block: dict) -> int:
@@ -125,6 +129,7 @@ class Client:
             'from': AsyncWeb3.to_checksum_address(from_),
             'to': AsyncWeb3.to_checksum_address(to),
         }
+        await asyncio.sleep(self.delay_between_requests)
         if data:
             tx_params['data'] = data
         if value:
@@ -132,9 +137,11 @@ class Client:
 
         if self.network.eip1559_tx:
             last_block = await self.w3.eth.get_block('latest')
+            await asyncio.sleep(self.delay_between_requests)
             if max_priority_fee_per_gas is None:
                 # max_priority_fee_per_gas = await Client.get_max_priority_fee_per_gas(w3=w3, block=last_block)
                 max_priority_fee_per_gas = await self.w3.eth.max_priority_fee
+                await asyncio.sleep(self.delay_between_requests)
             tx_params['maxPriorityFeePerGas'] = max_priority_fee_per_gas
             if max_fee_per_gas is None:
                 base_fee = int(last_block['baseFeePerGas'] * increase_gas)
@@ -146,6 +153,7 @@ class Client:
 
         try:
             tx_params['gas'] = int(await self.w3.eth.estimate_gas(tx_params) * increase_gas)
+            await asyncio.sleep(self.delay_between_requests)
         except ContractLogicError as err:
             logger.error(
                 f'{f"{self.profile.id} | " if self.profile else ""}{self.account.address} | Transaction failed | {err}'
@@ -207,10 +215,12 @@ class Client:
                 abi=abi or self.token_abi
             )
         balance = await self.balance_of(contract=contract)
+        await asyncio.sleep(self.delay_between_requests)
         token_symbol = await contract.functions.symbol().call()
+        await asyncio.sleep(self.delay_between_requests)
 
         if balance.Wei <= 0:
-            logger.error(
+            logger.warning(
                 f'{f"{self.profile.id} | " if self.profile else ""}{self.account.address} | '
                 f'{balance.Wei} {token_symbol}. Can\'t approve zero balance'
             )
@@ -220,6 +230,7 @@ class Client:
             amount = balance
 
         approved = await self.get_allowance(contract=contract, spender=spender)
+
         if amount.Wei <= approved.Wei:
             logger.info(
                 f'{f"{self.profile.id} | " if self.profile else ""}{self.account.address} | '
@@ -227,6 +238,7 @@ class Client:
             )
             return True
 
+        await asyncio.sleep(self.delay_between_requests)
         ok, tx_hash = await self.send_transaction(
             to=token_address,
             data=contract.encodeABI('approve',
@@ -235,6 +247,7 @@ class Client:
                                         amount.Wei
                                     ))
         )
+        await asyncio.sleep(self.delay_between_requests)
         return await self.verify_transaction(tx_hash, f'Approve {token_symbol}')
 
     @staticmethod

@@ -10,3 +10,4 @@ aiohttp_proxy
 aptos_sdk
 loguru
 apscheduler
+aiofiles

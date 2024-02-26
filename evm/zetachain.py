@@ -1,18 +1,20 @@
 import asyncio
+import csv
 import random
+
 from dotenv import load_dotenv
 
-from curl_cffi.requests import AsyncSession
+from curl_cffi.requests import AsyncSession, RequestsError
 from eth_account import Account
 from eth_account.messages import encode_typed_data
+from web3.exceptions import ContractLogicError
 from web3db.utils import DEFAULT_UA
 
 from evm.client import Client
 from evm.config import ABIS_DIR
 from evm.models import ZetaChain, BNB, TokenAmount
 
-from logger import logger
-from utils import read_json, set_windows_event_loop_policy
+from utils import read_json, set_windows_event_loop_policy, logger, sleep
 
 load_dotenv()
 set_windows_event_loop_policy()
@@ -98,6 +100,8 @@ zrc20_tokens = [
     '0x91d4F0D54090Df2D81e834c3c8CE71C6c865e79F',
     '0x0cbe0dF132a6c6B4a2974Fa1b7Fb953CF0Cc798a'
 ]
+delay_between_http_requests = 10
+delay_between_rpc_requests = 5
 
 
 async def zeta_and_bnb_price() -> tuple[float, float]:
@@ -119,7 +123,7 @@ class ZetachainHub:
         self.session = AsyncSession(proxies={"http": proxy}, headers=headers)
         self.tasks = {
             "SEND_ZETA": self.receive_and_transfer,
-            "RECEIVE_ZETA": None,
+            "RECEIVE_ZETA": self.receive_and_transfer,
             "POOL_DEPOSIT_ANY_POOL": self.lp_pool,
             "ONE_INVITE_ACCEPTED": None,
             "TEN_INVITES_ACCEPTED": None,
@@ -170,34 +174,35 @@ class ZetachainHub:
         if await contract.functions.hasBeenVerified(self.client.account.address).call():
             logger.info(f"{self.client.account.address} | Already enrolled...")
             return True
+        await asyncio.sleep(delay_between_rpc_requests)
         ok, tx_hash_or_err = await self.client.send_transaction(
             to=self.client.w3.to_checksum_address(contract_address),
             data=contract.encodeABI('markAsVerified')
         )
-        await asyncio.sleep(3)
+        await asyncio.sleep(delay_between_rpc_requests)
         return await self.client.verify_transaction(tx_hash_or_err, 'Enroll')
 
-    async def enroll_verify(self) -> bool:
-        logger.info(f"{self.client.account.address} | Verifying enroll...")
-        params = {
-            "address": self.client.account.address,
-        }
-        response = await self.session.post("https://xp.cl04.zetachain.com/v1/enroll-in-zeta-xp", json=params)
-        await asyncio.sleep(5)
-        if response.status == 200:
-            response = response.json()
-            logger.info(f"{self.client.account.address} | Verify status: {response['isUserVerified']}")
-            return True
-        else:
-            logger.error(f"{self.client.account.address} | Error status code: {response.status}")
-            return False
+    async def enroll_verify(self):
+        while True:
+            try:
+                response = await self.session.post(
+                    "https://xp.cl04.zetachain.com/v1/enroll-in-zeta-xp",
+                    json={"address": self.client.account.address}
+                )
+                response.raise_for_status()
+                response = response.json()
+                logger.info(f"{self.client.account.address} | Verify enroll status: {response['isUserVerified']}")
+                return True
+            except RequestsError as e:
+                logger.warning(f'{self.client.account.address} | Couldn\'t verify enroll - {e.args[0]}')
+                await sleep(60, 120)
 
     async def receive_and_transfer(self):
         ok, tx_hash_or_err = await self.client.send_transaction(
             to=self.client.account.address,
             value=self.client.w3.to_wei(0, "ether")
         )
-        await asyncio.sleep(3)
+        await asyncio.sleep(delay_between_rpc_requests)
         if await self.client.verify_transaction(tx_hash_or_err, 'Self transfer'):
             logger.success(
                 f'{self.client.account.address} | '
@@ -208,10 +213,12 @@ class ZetachainHub:
         bsc_client = Client(BNB, account=self.client.account)
         if (await bsc_client.get_native_balance()).Ether == 0:
             return False
+        await asyncio.sleep(delay_between_rpc_requests)
         ok, tx_hash_or_err = await bsc_client.send_transaction(
             to=bsc_client.w3.to_checksum_address('0x70e967acFcC17c3941E87562161406d41676FD83'),
             value=random.randint(10 ** 9, 10 ** 10)
         )
+        await asyncio.sleep(delay_between_rpc_requests)
         if await bsc_client.verify_transaction(tx_hash_or_err, 'BSC quest'):
             logger.success(
                 f'{self.client.account.address} | '
@@ -226,35 +233,47 @@ class ZetachainHub:
                 amount=TokenAmount(0.0001).Wei  # bnb
         ):
             return
-        await asyncio.sleep(3)
+        await asyncio.sleep(delay_between_rpc_requests)
         contract = self.client.w3.eth.contract(
             address=self.client.w3.to_checksum_address("0x2ca7d64A7EFE2D62A725E2B35Cf7230D6677FfEe"),
             abi=pool_abi,
         )
         while True:
             bnb_amount = random.randint(100, 1000)
+            ts = (await self.client.w3.eth.get_block("latest"))['timestamp'] + 3600
+            await asyncio.sleep(delay_between_rpc_requests)
+            nonce = await self.client.nonce()
+            await asyncio.sleep(delay_between_rpc_requests)
+            gas_price = await self.client.w3.eth.gas_price
+            await asyncio.sleep(delay_between_rpc_requests)
             tx = await contract.functions.addLiquidityETH(
                 self.client.w3.to_checksum_address("0x48f80608B672DC30DC7e3dbBd0343c5F02C738Eb"),
                 bnb_amount,
                 0,
                 0,
                 self.client.account.address,
-                (await self.client.w3.eth.get_block("latest"))['timestamp'] + 3600,
+                ts,
             ).build_transaction(
                 {
                     "from": self.client.account.address,
                     "value": TokenAmount(bnb_price / zeta_price * float(TokenAmount(bnb_amount, wei=True).Ether)).Wei,
-                    "nonce": await self.client.nonce(),
-                    "gasPrice": await self.client.w3.eth.gas_price,
+                    "nonce": nonce,
+                    "gasPrice": gas_price,
                     "chainId": 7000,
                 }
             )
-            await asyncio.sleep(3)
-            tx["gas"] = int(await self.client.w3.eth.estimate_gas(tx))
-            await asyncio.sleep(3)
+            await asyncio.sleep(delay_between_rpc_requests)
+            try:
+                tx["gas"] = int(await self.client.w3.eth.estimate_gas(tx))
+            except ContractLogicError as e:
+                logger.warning(
+                    f'{self.client.account.address} | Couldn\'t estimate gas for Pool deposit transaction. Trying again'
+                )
+                continue
+            await asyncio.sleep(delay_between_rpc_requests)
             signed_txn = self.client.w3.eth.account.sign_transaction(tx, self.client.account.key.hex())
             transaction_hash = (await self.client.w3.eth.send_raw_transaction(signed_txn.rawTransaction)).hex()
-            await asyncio.sleep(3)
+            await asyncio.sleep(delay_between_rpc_requests)
             if await self.client.verify_transaction(transaction_hash, 'Pool deposit'):
                 logger.success(
                     f'{self.client.account.address} | '
@@ -284,14 +303,14 @@ class ZetachainHub:
                 )
             ],
         )
-        await asyncio.sleep(3)
+        await asyncio.sleep(delay_between_rpc_requests)
         tx_data = main_contract.encodeABI(fn_name="multicall", args=[[encoded_data, "0x12210e8a"]])
         ok, tx_hash_or_err = await self.client.send_transaction(
             to=self.client.w3.to_checksum_address("0x34bc1b87f60e0a30c0e24FD7Abada70436c71406"),
             value=zeta_amount,
             data=tx_data
         )
-        await asyncio.sleep(3)
+        await asyncio.sleep(delay_between_rpc_requests)
         if await self.client.verify_transaction(tx_hash_or_err, 'BTC quest'):
             logger.success(
                 f'{self.client.account.address} | '
@@ -320,14 +339,14 @@ class ZetachainHub:
                 )
             ],
         )
-        await asyncio.sleep(3)
+        await asyncio.sleep(delay_between_rpc_requests)
         tx_data = main_contract.encodeABI(fn_name="multicall", args=[[encoded_data, "0x12210e8a"]])
         ok, tx_hash_or_err = await self.client.send_transaction(
             to=self.client.w3.to_checksum_address("0x34bc1b87f60e0a30c0e24FD7Abada70436c71406"),
             value=zeta_amount,
             data=tx_data
         )
-        await asyncio.sleep(3)
+        await asyncio.sleep(delay_between_rpc_requests)
         if await self.client.verify_transaction(tx_hash_or_err, 'ETH quest'):
             logger.success(
                 f'{self.client.account.address} | '
@@ -338,31 +357,30 @@ class ZetachainHub:
         # wrap zeta, approve stzeta, approve wzeta, add liquidity
         async def stake_zeta(amount: int) -> bool:
             stZETA_balance = await self.client.balance_of(token_address=stZETA_token_address)
-            await asyncio.sleep(3)
             if stZETA_balance.Wei >= amount:
                 logger.info(f'{self.client.account.address} | Already staking {stZETA_balance} stZETA')
                 return True
+            await asyncio.sleep(delay_between_rpc_requests)
             ok, tx_hash_or_err = await self.client.send_transaction(
                 to=stZETA_token_address,
                 value=random.randint(10 ** 14, 10 ** 15),
                 data='0x5bcb2fc6'
             )
-            await asyncio.sleep(3)
+            await asyncio.sleep(delay_between_rpc_requests)
             return await self.client.verify_transaction(tx_hash_or_err, 'Stake ZETA')
 
         async def wrap_zeta(amount: int) -> bool:
             WZETA_balance = await self.client.balance_of(token_address=WZETA_token_address)
-            await asyncio.sleep(3)
             if WZETA_balance.Wei >= amount:
                 logger.info(f'{self.client.account.address} | Already wrapped {WZETA_balance} WZETA')
                 return True
-            await asyncio.sleep(3)
+            await asyncio.sleep(delay_between_rpc_requests)
             ok, tx_hash_or_err = await self.client.send_transaction(
                 to=WZETA_token_address,
                 value=amount,
                 data='0xd0e30db0'
             )
-            await asyncio.sleep(3)
+            await asyncio.sleep(delay_between_rpc_requests)
             return await self.client.verify_transaction(tx_hash_or_err, 'Wrap ZETA')
 
         izumi_wzeta_ztzeta_pool_contract = self.client.w3.eth.contract(
@@ -370,32 +388,32 @@ class ZetachainHub:
             abi=izumi_WZETA_stZETA_pool_abi
         )
         pool_balance = await izumi_wzeta_ztzeta_pool_contract.functions.getUnderlyingBalances().call()
-        await asyncio.sleep(3)
+        await asyncio.sleep(delay_between_rpc_requests)
         pool_ratio = pool_balance[0] / pool_balance[1]
         stZETA_amount = random.randint(10_000, 100_000)
         WZETA_amount = int(stZETA_amount / pool_ratio)
         stZETA_amount, WZETA_amount, RUNI_amount = await izumi_wzeta_ztzeta_pool_contract.functions.getMintAmounts(
             stZETA_amount, WZETA_amount
         ).call()
-        await asyncio.sleep(3)
+        await asyncio.sleep(delay_between_rpc_requests)
 
         await stake_zeta(stZETA_amount)
-        await asyncio.sleep(3)
+        await asyncio.sleep(delay_between_rpc_requests)
         await self.client.approve(
             token_address=stZETA_token_address,
             spender=izumi_WZETA_stZETA_pool_address,
             amount=TokenAmount(stZETA_amount, wei=True)
         )
-        await asyncio.sleep(3)
+        await asyncio.sleep(delay_between_rpc_requests)
 
         await wrap_zeta(WZETA_amount)
-        await asyncio.sleep(3)
+        await asyncio.sleep(delay_between_rpc_requests)
         await self.client.approve(
             token_address=WZETA_token_address,
             spender=izumi_WZETA_stZETA_pool_address,
             amount=TokenAmount(WZETA_amount, wei=True)
         )
-        await asyncio.sleep(3)
+        await asyncio.sleep(delay_between_rpc_requests)
 
         ok, tx_hash_or_err = await self.client.send_transaction(
             to=izumi_WZETA_stZETA_pool_address,
@@ -404,7 +422,7 @@ class ZetachainHub:
                 args=[RUNI_amount, [stZETA_amount, WZETA_amount]]
             )
         )
-        await asyncio.sleep(3)
+        await asyncio.sleep(delay_between_rpc_requests)
         if await self.client.verify_transaction(tx_hash_or_err, 'Range pool'):
             logger.success(
                 f'{self.client.account.address} | '
@@ -424,7 +442,7 @@ class ZetachainHub:
                 value=stZETA_amount,
                 data=stZETAMinter_contract.encodeABI('deposit', args=[self.client.account.address])
             )
-            await asyncio.sleep(3)
+            await asyncio.sleep(delay_between_rpc_requests)
             return await self.client.verify_transaction(tx_hash_or_err, 'Mint stZETA')
 
         async def deposit_wstZETA():
@@ -436,17 +454,17 @@ class ZetachainHub:
                 to=wstZETA_token_address,
                 data=wstZETA_contract.encodeABI('deposit', args=[stZETA_amount, self.client.account.address])
             )
-            await asyncio.sleep(3)
+            await asyncio.sleep(delay_between_rpc_requests)
             return await self.client.verify_transaction(tx_hash_or_err, 'Stake stZETA')
 
         await deposit_stZETA()
-        await asyncio.sleep(3)
+        await asyncio.sleep(delay_between_rpc_requests)
         await self.client.approve(
             spender=wstZETA_token_address,
             token_address=stZETA_af_token_address,
             amount=stZETA_amount
         )
-        await asyncio.sleep(3)
+        await asyncio.sleep(delay_between_rpc_requests)
         if await deposit_wstZETA():
             logger.success(
                 f'{self.client.account.address} | '
@@ -462,7 +480,7 @@ class ZetachainHub:
                  f'{random.choice(zrc20_tokens)[2:]}',
             value=random.randrange(TokenAmount(0.001).Wei)
         )
-        await asyncio.sleep(3)
+        await asyncio.sleep(delay_between_rpc_requests)
         if await self.client.verify_transaction(tx_hash_or_err, 'Eddy Swap'):
             logger.success(
                 f'{self.client.account.address} | '
@@ -470,20 +488,27 @@ class ZetachainHub:
             )
 
     async def check_tasks(self) -> tuple[list[str], list[str]]:
-        check_resp = await self.session.get(
-            "https://xp.cl04.zetachain.com/v1/get-user-has-xp-to-refresh",
-            params={"address": self.client.account.address}
-        )
+        while True:
+            try:
+                response = await self.session.get(
+                    "https://xp.cl04.zetachain.com/v1/get-user-has-xp-to-refresh",
+                    params={"address": self.client.account.address}
+                )
+                response.raise_for_status()
+                break
+            except RequestsError as e:
+                logger.warning(f'{self.client.account.address} | Couldn\'t check tasks - {e.args[0]}')
+                await sleep(60, 120)
         quests_to_refresh = []
         quests_to_do = []
-        check_resp = check_resp.json()
-        if check_resp.get('message', None):
+        data = response.json()
+        if data.get('message', None):
             logger.info(
                 f'{self.client.account.address} | '
                 f'You have already refreshed your activities, try again in a minute!'
             )
         else:
-            for task, task_data in check_resp["xpRefreshTrackingByTask"].items():
+            for task, task_data in data["xpRefreshTrackingByTask"].items():
                 if task_data["hasXpToRefresh"]:
                     quests_to_refresh.append(task)
                 elif not task_data["hasAlreadyEarned"]:
@@ -505,34 +530,60 @@ class ZetachainHub:
                 json=claim_data
             )
             logger.success(f"{self.client.account.address} | Claimed {quest}")
-            await asyncio.sleep(3)
+            await asyncio.sleep(delay_between_http_requests)
         return available_quests
 
-    async def get_tasks(self) -> list[str]:
-        response = await self.session.get('https://xp.cl04.zetachain.com/v1/get-tasks')
-        data = response.json()
-        return data['tasks']
+    async def get_stats(self) -> dict | None:
+        while True:
+            try:
+                response = await self.session.get(
+                    f'https://xp.cl04.zetachain.com/v1/get-points?address={self.client.account.address}'
+                )
+                response.raise_for_status()
+                data = response.json()
+                return {'level': data['level'], 'points': data['totalXp'], 'rank': data['rank']}
+            except RequestsError as e:
+                logger.error(f'{self.client.account.address} | Couldn\'t get stats - {e}')
+                await sleep(60, 120)
 
 
-async def process_account(key: str, proxy: str):
+async def process_account(key: str, proxy: str) -> dict | None:
     account = Account.from_key(key)
-    client = Client(ZetaChain, account=account)
+    client = Client(ZetaChain, account=account, delay_between_requests=3)
     async with ZetachainHub(client, proxy) as zh:
+        await zh.enroll()
+        await asyncio.sleep(delay_between_http_requests)
+        await zh.enroll_verify()
+        await asyncio.sleep(delay_between_http_requests)
         available_quests = await zh.claim_tasks()
-        if choice == 2:
+        await asyncio.sleep(delay_between_http_requests)
+        if choice == 1:
+            for task in random.sample(available_quests, len(available_quests)):
+                if zh.tasks[task]:
+                    await zh.tasks[task]()
+                    await asyncio.sleep(random.uniform(30, 60))
+            logger.success(f'{zh.client.account.address} | All tasks done')
+            await zh.claim_tasks()
+            logger.success(f'{zh.client.account.address} | All tasks claimed')
+        elif choice == 2:
             return
-        for task in random.sample(available_quests, len(available_quests)):
-            if zh.tasks[task]:
-                await zh.tasks[task]()
-                await asyncio.sleep(random.uniform(30, 60))
-        logger.success(f'{zh.client.account.address} | All tasks done. Maybe need to claim')
+        stats = await zh.get_stats()
+        return {'address': zh.client.account.address, **stats}
 
 
 async def main():
     tasks = []
     for key, proxy in zip(private_keys, proxies):
         tasks.append(asyncio.create_task(process_account(key, proxy)))
-    await asyncio.gather(*tasks)
+    stats = await asyncio.gather(*tasks)
+    if stats:
+        with open('stats.csv', 'w', encoding='utf-8', newline='') as file:
+            fieldnames = ['address', 'level', 'points', 'rank']
+            writer = csv.DictWriter(file, delimiter=';', fieldnames=fieldnames)
+            writer.writeheader()
+            for stat in stats:
+                if stat:
+                    writer.writerow(stat)
 
 
 if __name__ == "__main__":
@@ -543,6 +594,7 @@ if __name__ == "__main__":
             "\n----------------------"
             "\n1: Do tasks"
             "\n2: Claim XP"
+            "\n3: Get statistics"
             "\n----------------------"
             "\nChoice: "
         )
