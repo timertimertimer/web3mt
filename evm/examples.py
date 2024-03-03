@@ -1,19 +1,14 @@
 import asyncio
-import os
 
-from eth_account import Account
 from web3db import DBHelper
-from web3db.models import Profile
-from web3db.utils import decrypt
 
-from logger import logger
-from client import Client
-from evm.config import LXP_ABI_PATH, OPBNB_BRIDGE_ABI_PATH
-from models import Network, Linea, opBNB, BNB, TokenAmount
+from client import *
+from evm.config import *
+from models import *
+from utils import *
 
 from dotenv import load_dotenv
 
-from utils import read_json
 
 load_dotenv()
 
@@ -26,7 +21,11 @@ async def check_balance_batch(network: Network):
     for profile in profiles:
         client = Client(network, profile)
         tasks.append(asyncio.create_task(client.get_native_balance(echo=True)))
-    await asyncio.gather(*tasks)
+    total = await asyncio.gather(*tasks)
+    ans = 0
+    for el in total:
+        ans += el.Ether
+    logger.info(f'Total: {ans}')
 
 
 async def check_xp_linea():
@@ -78,4 +77,4 @@ async def opbnb_bridge(profile: Profile, amount: float = 0.002):
 
 
 if __name__ == '__main__':
-    asyncio.run(get_wallets_with_balance(opBNB))
+    asyncio.run(check_balance_batch(Ethereum))

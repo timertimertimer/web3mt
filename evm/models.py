@@ -189,7 +189,7 @@ opBNB = Network(
 
 BNB = Network(
     name='BNB',
-    rpc='https://1rpc.io/bnb',
+    rpc='https://bsc.meowrpc.com',
     chain_id=56,
     eip1559_tx=True,
     coin_symbol='BNB',
@@ -206,7 +206,7 @@ Linea = Network(
 )
 zkSync = Network(
     name='zkSync',
-    rpc='https://1rpc.io/zksync2-era',
+    rpc='https://mainnet.era.zksync.io',
     chain_id=324,
     eip1559_tx=True,
     coin_symbol='ETH',
@@ -219,4 +219,12 @@ ZetaChain = Network(
     eip1559_tx=True,
     coin_symbol='ZETA',
     explorer='https://explorer.zetachain.com/'
+)
+Scroll = Network(
+    name='Scroll',
+    rpc='https://scroll.drpc.org',
+    chain_id=534352,
+    eip1559_tx=True,
+    coin_symbol='ETH',
+    explorer='https://scrollscan.com/'
 )

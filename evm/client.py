@@ -1,4 +1,3 @@
-import asyncio
 import os
 
 from hexbytes import HexBytes
@@ -37,7 +36,8 @@ class Client:
             profile: Profile = None,
             account: Account = None,
             proxy: str = None,
-            delay_between_requests: int = 0
+            delay_between_requests: int = 0,
+            sleep_echo: bool = False
     ):
         self.profile = profile
         self.account = Account.from_key(decrypt(profile.evm_private, os.getenv('PASSPHRASE'))) if profile else account
@@ -48,6 +48,7 @@ class Client:
             middlewares=[async_geth_poa_middleware]
         )
         self.delay_between_requests = delay_between_requests
+        self.sleep_echo = sleep_echo
 
     async def nonce(self):
         return await self.w3.eth.get_transaction_count(self.account.address)
@@ -70,7 +71,11 @@ class Client:
         if not contract:
             contract = self.w3.eth.contract(address=AsyncWeb3.to_checksum_address(token_address), abi=self.token_abi)
         amount = await contract.functions.balanceOf(address).call()
-        await sleep(self.delay_between_requests, profile_id=self.profile.id)
+        await sleep(
+            self.delay_between_requests,
+            profile_id=self.profile.id if self.profile else None,
+            echo=self.sleep_echo
+        )
         decimals = await self.get_decimals(contract=contract)
         return TokenAmount(
             amount=amount,
@@ -85,9 +90,17 @@ class Client:
         if not contract:
             contract = self.w3.eth.contract(address=AsyncWeb3.to_checksum_address(token_address), abi=self.token_abi)
         amount = await contract.functions.allowance(self.account.address, spender).call()
-        await sleep(self.delay_between_requests, profile_id=self.profile.id)
+        await sleep(
+            self.delay_between_requests,
+            profile_id=self.profile.id if self.profile else None,
+            echo=self.sleep_echo
+        )
         decimals = await self.get_decimals(contract=contract)
-        await sleep(self.delay_between_requests, profile_id=self.profile.id)
+        await sleep(
+            self.delay_between_requests,
+            profile_id=self.profile.id if self.profile else None,
+            echo=self.sleep_echo
+        )
         return TokenAmount(amount=amount, decimals=decimals, wei=True)
 
     @staticmethod
@@ -129,7 +142,11 @@ class Client:
             'from': AsyncWeb3.to_checksum_address(from_),
             'to': AsyncWeb3.to_checksum_address(to),
         }
-        await sleep(self.delay_between_requests, profile_id=self.profile.id)
+        await sleep(
+            self.delay_between_requests,
+            profile_id=self.profile.id if self.profile else None,
+            echo=self.sleep_echo
+        )
         if data:
             tx_params['data'] = data
         if value:
@@ -137,11 +154,19 @@ class Client:
 
         if self.network.eip1559_tx:
             last_block = await self.w3.eth.get_block('latest')
-            await sleep(self.delay_between_requests, profile_id=self.profile.id)
+            await sleep(
+                self.delay_between_requests,
+                profile_id=self.profile.id if self.profile else None,
+                echo=self.sleep_echo
+            )
             if max_priority_fee_per_gas is None:
                 # max_priority_fee_per_gas = await Client.get_max_priority_fee_per_gas(w3=w3, block=last_block)
                 max_priority_fee_per_gas = await self.w3.eth.max_priority_fee
-                await sleep(self.delay_between_requests, profile_id=self.profile.id)
+                await sleep(
+                    self.delay_between_requests,
+                    profile_id=self.profile.id if self.profile else None,
+                    echo=self.sleep_echo
+                )
             tx_params['maxPriorityFeePerGas'] = max_priority_fee_per_gas
             if max_fee_per_gas is None:
                 base_fee = int(last_block['baseFeePerGas'] * increase_gas)
@@ -153,8 +178,12 @@ class Client:
 
         try:
             tx_params['gas'] = int(await self.w3.eth.estimate_gas(tx_params) * increase_gas)
-            await sleep(self.delay_between_requests, profile_id=self.profile.id)
-        except ContractLogicError as err:
+            await sleep(
+                self.delay_between_requests,
+                profile_id=self.profile.id if self.profile else None,
+                echo=self.sleep_echo
+            )
+        except (ContractLogicError, ValueError) as err:
             logger.error(
                 f'{f"{self.profile.id} | " if self.profile else ""}{self.account.address} | Transaction failed | {err}'
             )
@@ -215,9 +244,17 @@ class Client:
                 abi=abi or self.token_abi
             )
         balance = await self.balance_of(contract=contract)
-        await sleep(self.delay_between_requests, profile_id=self.profile.id)
+        await sleep(
+            self.delay_between_requests,
+            profile_id=self.profile.id if self.profile else None,
+            echo=self.sleep_echo
+        )
         token_symbol = await contract.functions.symbol().call()
-        await sleep(self.delay_between_requests, profile_id=self.profile.id)
+        await sleep(
+            self.delay_between_requests,
+            profile_id=self.profile.id if self.profile else None,
+            echo=self.sleep_echo
+        )
 
         if balance.Wei <= 0:
             logger.warning(
@@ -238,7 +275,11 @@ class Client:
             )
             return True
 
-        await sleep(self.delay_between_requests, profile_id=self.profile.id)
+        await sleep(
+            self.delay_between_requests,
+            profile_id=self.profile.id if self.profile else None,
+            echo=self.sleep_echo
+        )
         ok, tx_hash = await self.send_transaction(
             to=token_address,
             data=contract.encodeABI('approve',
@@ -247,7 +288,11 @@ class Client:
                                         amount.Wei
                                     ))
         )
-        await sleep(self.delay_between_requests, profile_id=self.profile.id)
+        await sleep(
+            self.delay_between_requests,
+            profile_id=self.profile.id if self.profile else None,
+            echo=self.sleep_echo
+        )
         return await self.verify_transaction(tx_hash, f'Approve {token_symbol}')
 
     @staticmethod

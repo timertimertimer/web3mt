@@ -23,6 +23,7 @@ from web3db.utils import decrypt, DEFAULT_UA
 from evm.reiki import mint
 from web2.reiki.db import *
 from web2.reiki.config import *
+from web2.reiki.db import update_total_points
 from web2.utils import *
 
 from utils import logger, ProfileSession
@@ -45,8 +46,8 @@ class Reiki:
         await self.session.connector.close()
         await self.session.close()
 
-    async def start_tasks(self, tasks: bool = False) -> None:
-        if tasks:
+    async def start_tasks(self, choice: int) -> None:
+        if choice == 1:
             response, data = await self.profile_()
             if not data['referrerWalletAddress']:
                 await self.refer()
@@ -60,28 +61,29 @@ class Reiki:
             ]
             for task in random.sample(all_tasks, len(all_tasks)):
                 await task
-        else:
+        elif choice == 2:
             await self.claim_daily()
+        else:
+            await self.try_lottery()
 
-    async def me(self):
+    async def me(self) -> float:
         url = 'https://reiki.web3go.xyz/api/GoldLeaf/me'
         while True:
             try:
                 response, data = await self.session.request(method='GET', url=url)
                 response.raise_for_status()
-                logger.success(
-                    f'{self.profile.id} | '
-                    f'Points: today - {data["today"] if "today" in data else 0}, '
-                    f'total - {data["total"] if "total" in data else 0}',
-                )
-                return
+                total = data["total"] if "total" in data else 0
+                today = data["today"] if "today" in data else 0
+                logger.success(f'{self.profile.id} | Points: today - {today}, total - {total}')
+                await update_total_points(self.profile.id, total)
+                return total
             except ClientResponseError as e:
                 await self.create_bearer_token()
 
     async def create_bearer_token(self):
         nonce = await self.web3_nonce()
         token = await self.web3_challenge(nonce)
-        await insert_record(self.profile.evm_address, token)
+        await insert_record(self.profile.id, token)
         self.session.headers['Authorization'] = f'Bearer {token}'
 
     async def web3_nonce(self) -> str:
@@ -302,20 +304,36 @@ class Reiki:
         else:
             logger.error(f"{self.profile.id} | {response.url}")
 
+    async def try_lottery(self):
+        url = REIKI_API + 'lottery/'
+        while True:
+            response, data = await self.session.request(method='GET', url=url + 'offchain')
+            chip_num, piece_num, user_gold_leaf_count = data['chipNum'], data['pieceNum'], data['userGoldLeafCount']
+            logger.info(
+                f'{self.profile.id} | Lottery status: Chips - {chip_num}, '
+                f'Pieces: {piece_num}. Gold leafs left - {user_gold_leaf_count}'
+            )
+            if user_gold_leaf_count < 2000:
+                await update_total_points(self.profile.id, user_gold_leaf_count)
+                await update_chips(self.profile.id, chip_num, piece_num)
+                break
+            response, data = await self.session.request(method='POST', url=url + 'try')
+            logger.success(f"{self.profile.id} | Prize: {data['prize']}")
+
 
 async def start(profile, choice: int) -> None:
     async with Reiki(profile) as reiki:
-        token = await get_token_by_address(reiki.profile.evm_address)
+        token = await get_token(reiki.profile.id)
         if token:
             reiki.session.headers['Authorization'] = f'Bearer {token}'
         if not await mint(profile):
             return
         await reiki.me()
-        await reiki.start_tasks(choice == 1)
+        await reiki.start_tasks(choice)
 
 
 async def main():
-    choice = int(input('1. Do tasks\n2. Claim daily\n'))
+    choice = int(input('1. Do tasks\n2. Claim daily\n3. Lottery\n'))
     await create_table()
 
     tasks = []

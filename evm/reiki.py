@@ -26,7 +26,7 @@ async def mint(profile: Profile) -> str | bool:
         logger.success(f'{profile.id} | {client.account.address} | Already minted')
         return True
     if (await client.get_native_balance()).Ether < 0.001:
-        logger.info(f'{profile.id} | No balance, skipping')
+        logger.info(f'{profile.id} | {profile.evm_address} | No balance, skipping')
         return False
     contract = client.w3.eth.contract(
         address=Web3.to_checksum_address(contract_address),

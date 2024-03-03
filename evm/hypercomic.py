@@ -34,7 +34,8 @@ contracts = {
     10: '0xdc5401279a735ff9f3fab1d73d51d520dc1d8fdf',
     11: '0x8cc9502fd26222ab38a25eee76ae4c7493a3fa2a',
     12: '0xee8020254c67547cee7ff8df15ddbc1ffa0c477a',
-    13: '0x3f332b469fbc7a580b00b11df384bdbebbd65588'
+    13: '0x3f332b469fbc7a580b00b11df384bdbebbd65588',
+    14: '0x1a640bf545e04416df6ffa2f9cc4813003e52649'
 }
 
 
@@ -56,9 +57,9 @@ async def get_signature(proxy_string: str, nft_number: int, client: Client):
 async def mint(profile: Profile):
     client = Client(zkSync, profile)
     client.default_abi = read_json(HYPERCOMIC_ABI_PATH)
-    enough_balance = await have_balance(client, ethers=0, echo=True)
+    enough_balance = await have_balance(client, ethers=0)
     if not enough_balance:
-        logger.info(f'{profile.id} | No balance, skipping')
+        logger.info(f'{profile.id} | {profile.evm_address} | No balance, skipping')
         return
     for i, contract_address in contracts.items():
         contract = client.w3.eth.contract(
@@ -77,11 +78,13 @@ async def mint(profile: Profile):
                     f'{profile.id} | {client.account.address} | Contract: {contract_address} Signature: {signature}')
             continue
         signature = bytes.fromhex(signature[2:])
+
         await client.send_transaction(
             to=contract_address,
             data=contract.encodeABI('mint', args=[signature]),
-            max_priority_fee_per_gas=100000000,
-            value=TokenAmount(0.00012).Wei
+            max_priority_fee_per_gas=100000000 if i != 14 else 0,
+            max_fee_per_gas=None if i != 14 else 100000000,
+            value=TokenAmount(0.00012).Wei if i != 14 else TokenAmount(0.00013).Wei
         )
 
 

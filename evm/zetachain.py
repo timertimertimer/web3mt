@@ -101,7 +101,7 @@ zrc20_tokens = [
     '0x0cbe0dF132a6c6B4a2974Fa1b7Fb953CF0Cc798a'
 ]
 delay_between_http_requests = 10
-delay_between_rpc_requests = 5
+delay_between_rpc_requests = 10
 
 
 async def zeta_and_bnb_price() -> tuple[float, float]:
@@ -116,6 +116,14 @@ class ZetachainHub:
         headers = {
             "User-Agent": DEFAULT_UA,
             "Accept": "application/json, text/plain, */*",
+            "Accept-Encoding": "gzip, deflate, br, zstd",
+            "Accept-Language": "en-US,en;q=0.9",
+            "Sec-Ch-Ua": '"Chromium";v="120", "Not(A:Brand";v="24", "Google Chrome";v="120"',
+            "Sec-Ch-Ua-Mobile": "?0",
+            "Sec-Ch-Ua-Platform": '"Windows"',
+            "Sec-Fetch-Dest": "empty",
+            "Sec-Fetch-Mode": "cors",
+            "Sec-Fetch-Site": "same-site",
             "Origin": "https://hub.zetachain.com",
             "Connection": "keep-alive",
             "Referer": "https://hub.zetachain.com/",
@@ -209,16 +217,18 @@ class ZetachainHub:
                 f'"Send ZETA in ZetaChain" and "Receive ZETA in ZetaChain" tasks done. Need to claim'
             )
 
-    async def receive_bnb(self) -> bool:
+    async def receive_bnb(self) -> None:
         bsc_client = Client(BNB, account=self.client.account)
         if (await bsc_client.get_native_balance()).Ether == 0:
-            return False
+            return
         await sleep(delay_between_rpc_requests)
         ok, tx_hash_or_err = await bsc_client.send_transaction(
             to=bsc_client.w3.to_checksum_address('0x70e967acFcC17c3941E87562161406d41676FD83'),
             value=random.randint(10 ** 9, 10 ** 10)
         )
         await sleep(delay_between_rpc_requests)
+        if not ok:
+            return
         if await bsc_client.verify_transaction(tx_hash_or_err, 'BSC quest'):
             logger.success(
                 f'{self.client.account.address} | '
@@ -549,7 +559,7 @@ class ZetachainHub:
 
 async def process_account(key: str, proxy: str) -> dict | None:
     account = Account.from_key(key)
-    client = Client(ZetaChain, account=account, delay_between_requests=3)
+    client = Client(ZetaChain, account=account, delay_between_requests=5)
     async with ZetachainHub(client, proxy) as zh:
         await zh.enroll()
         await sleep(delay_between_http_requests)
