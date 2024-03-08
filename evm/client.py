@@ -43,7 +43,8 @@ class Client:
         self.account = Account.from_key(decrypt(profile.evm_private, os.getenv('PASSPHRASE'))) if profile else account
         self.network = network
         self.w3 = Web3(
-            Web3.AsyncHTTPProvider(self.network.rpc, request_kwargs={'proxy': proxy}),
+            Web3.AsyncHTTPProvider(self.network.rpc, request_kwargs={
+                'proxy': self.profile.proxy.proxy_string if self.profile else proxy}),
             modules={'eth': (AsyncEth,), 'net': (AsyncNet,)},
             middlewares=[async_geth_poa_middleware]
         )
@@ -184,8 +185,9 @@ class Client:
                 echo=self.sleep_echo
             )
         except (ContractLogicError, ValueError) as err:
-            logger.error(
-                f'{f"{self.profile.id} | " if self.profile else ""}{self.account.address} | Transaction failed | {err}'
+            logger.warning(
+                f'{f"{self.profile.id} | " if self.profile else ""}{self.account.address} | '
+                f'Couldn\'t estimate gas. Transaction wasn\'t send | {err}'
             )
             return False, err
         while True:

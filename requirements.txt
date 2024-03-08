@@ -1,4 +1,4 @@
-web3db @ git+https://github.com/timertimertimer/web3db.git
+web3db
 aiosqlite
 web3
 eth_account
