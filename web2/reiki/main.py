@@ -7,11 +7,12 @@ import random
 
 from datetime import datetime, timezone, timedelta
 
-from better_automation.discord.errors import Unauthorized
+from curl_cffi.requests import RequestsError
 from dotenv import load_dotenv
 
-from aiohttp.client_exceptions import ClientResponseError
-from better_automation.twitter import TwitterClient, TwitterAccount
+from twitter import Client as TwitterClient, Account as TwitterAccount
+from twitter.errors import Forbidden, BadToken
+from discord import Client as DiscordClient, HTTPException
 
 from eth_account import Account
 from eth_account.messages import encode_defunct
@@ -24,10 +25,8 @@ from evm.reiki import mint
 from web2.reiki.db import *
 from web2.reiki.config import *
 from web2.reiki.db import update_total_points
-from web2.utils import *
 
 from utils import logger, ProfileSession
-from web2.models import DiscordAccountModified
 
 load_dotenv()
 
@@ -42,9 +41,11 @@ class Reiki:
         return self
 
     async def __aexit__(self, exc_type, exc_val, exc_tb):
-        logger.success(f'{self.profile.id} | Tasks completed')
-        await self.session.connector.close()
-        await self.session.close()
+        if exc_type:
+            logger.error(exc_val)
+        else:
+            logger.success(f'{self.profile.id} | Tasks completed')
+        self.session.close()
 
     async def start_tasks(self, choice: int) -> None:
         if choice == 1:
@@ -74,10 +75,10 @@ class Reiki:
                 response.raise_for_status()
                 total = data["total"] if "total" in data else 0
                 today = data["today"] if "today" in data else 0
-                logger.success(f'{self.profile.id} | Points: today - {today}, total - {total}')
+                logger.success(f'{self.profile.id} | Points: today/total - {today}/{total}')
                 await update_total_points(self.profile.id, total)
                 return total
-            except ClientResponseError as e:
+            except RequestsError:
                 await self.create_bearer_token()
 
     async def create_bearer_token(self):
@@ -139,7 +140,7 @@ class Reiki:
     async def claim_gifts(self) -> None:
         url = REIKI_API + 'gift'
         response, data = await self.session.request(method='GET', url=url, params={'type': 'recent'})
-        if response.status == 200:
+        if response.status_code == 200:
             if data:
                 logger.info(f'{self.profile.id} | Got gifts')
             else:
@@ -189,7 +190,7 @@ class Reiki:
             try:
                 response, data = await self.session.request(method='GET', url=url)
                 break
-            except ClientResponseError as e:
+            except RequestsError as e:
                 logger.error(f'{self.profile.id} | {url} {e.message}')
                 if e.status == 401:
                     await self.create_bearer_token()
@@ -216,7 +217,7 @@ class Reiki:
                 question_id = question['id']
                 url = REIKI_API + 'quiz/' + question_id + '/answer'
                 response, data = await self.session.request(method='POST', url=url, json=payload)
-                if response.status == 201 or data['message'] == 'Already answered':
+                if response.status_code == 201 or data['message'] == 'Already answered':
                     logger.success(f'{self.profile.id} | {data["message"]}')
                 else:
                     logger.info(f'{self.profile.id} | {data["message"]}')
@@ -249,7 +250,7 @@ class Reiki:
         if data == 'true':
             logger.success(f'{self.profile.id} | Email connected')
         else:
-            logger.error(f"{self.profile.id} | Couldn't connect email - {data}")
+            logger.warning(f"{self.profile.id} | Couldn't connect email - {data}")
 
     async def connect_twitter(self) -> bool:
         if not self.profile.twitter.ready:
@@ -258,38 +259,54 @@ class Reiki:
         url = REIKI_API + 'oauth/twitter2/'
         try:
             response, data = await self.session.request(method='GET', url=url, follow_redirects=True)
-        except ClientResponseError as e:
+        except RequestsError as e:
             logger.error(f'{self.profile.id} | {url} {e.message}')
             return False
-        payload = {**response.url.query}
+        payload = {}
+        for el in response.url.split('authorize?')[-1].split('&'):
+            k, v = el.split('=')
+            payload[k] = v
         payload.pop('nonce')
-        code = await TwitterClient(
-            account=TwitterAccount(self.profile.twitter.auth_token),
-            proxy=str(self.session.connector.proxy_url),
+        client = TwitterClient(
+            account=TwitterAccount(auth_token=self.profile.twitter.auth_token.strip()),
+            proxy=str(self.session.proxies['all']),
             verify=False,
-        ).oauth_2(**payload)
-        await self.callback(url, code, response.url.query['state'])
+        )
+        try:
+            code = await client.oauth_2(**payload)
+        except (Forbidden, BadToken) as e:
+            logger.warning(
+                f'{self.profile.id} | Couldn\'t connect twitter. Account status {client.account.status}'
+            )
+            return False
+        await self.callback(url, code, payload['state'])
         return True
 
     async def connect_discord(self):
         url = REIKI_API + 'oauth/discord/'
         try:
             response, data = await self.session.request(method='GET', url=url, follow_redirects=True)
-        except ClientResponseError as e:
+        except RequestsError as e:
             logger.error(f'{self.profile.id} | {url} {e.message}')
             return False
-        payload = {**response.url.query}
-        payload.pop('nonce')
+        payload = {
+            'redirect_uri': 'https://reiki.web3go.xyz/api/oauth/discord/callback',
+            'scopes': ['identify', 'connections', 'guilds']
+        }
+        application_id = None
+        for el in response.url.split('authorize?')[-1].split('&'):
+            k, v = el.split('=')
+            if k == 'client_id':
+                application_id = v
+            elif k not in ['nonce', 'scope'] and k not in payload:
+                payload[k] = v
         try:
-            code = await DiscordClientModified(
-                account=DiscordAccountModified(self.profile.discord.auth_token),
-                proxy=str(self.session.connector.proxy_url),
-                verify=False
-            ).oauth_2(**payload)
-        except Unauthorized as e:
-            logger.error(f'{self.profile.id} | Discord token not valid, can\'t get oauth code')
+            async with DiscordClient(proxy=self.profile.proxy.proxy_string) as client:
+                code = await client.create_authorization(application_id, **payload)
+        except HTTPException as e:
+            logger.warning(f'{self.profile.id} | Discord token not valid, can\'t get oauth code')
             return
-        await self.callback(url, code, response.url.query['state'])
+        await self.callback(url, code, payload['state'])
 
     async def callback(self, url: str, code: str, state: str):
         url += 'callback'
@@ -310,8 +327,8 @@ class Reiki:
             response, data = await self.session.request(method='GET', url=url + 'offchain')
             chip_num, piece_num, user_gold_leaf_count = data['chipNum'], data['pieceNum'], data['userGoldLeafCount']
             logger.info(
-                f'{self.profile.id} | Lottery status: Chips - {chip_num}, '
-                f'Pieces: {piece_num}. Gold leafs left - {user_gold_leaf_count}'
+                f'{self.profile.id} | Lottery status: Chips/Pieces - {chip_num}/{piece_num}. '
+                f'Gold leafs left - {user_gold_leaf_count}'
             )
             if user_gold_leaf_count < 2000:
                 await update_total_points(self.profile.id, user_gold_leaf_count)
@@ -323,17 +340,21 @@ class Reiki:
 
 async def start(profile, choice: int) -> None:
     async with Reiki(profile) as reiki:
+        if not await mint(profile):
+            return
         token = await get_token(reiki.profile.id)
         if token:
             reiki.session.headers['Authorization'] = f'Bearer {token}'
-        if not await mint(profile):
-            return
         await reiki.me()
-        await reiki.start_tasks(choice)
+        await reiki.claim_daily()
+        await reiki.try_lottery()
+        if choice == 1:
+            await reiki.start_tasks(choice)
+        await reiki.me()
 
 
 async def main():
-    choice = int(input('1. Do tasks\n2. Claim daily\n3. Lottery\n'))
+    choice = int(input('1. Do tasks\n2. Claim daily'))
     await create_table()
 
     tasks = []

@@ -103,15 +103,17 @@ class TokenAmount:
 
 
 class Network:
-    def __init__(self,
-                 name: str,
-                 rpc: str,
-                 chain_id: int,
-                 eip1559_tx: bool,
-                 coin_symbol: str,
-                 explorer: str,
-                 decimals: int = 18,
-                 ):
+    def __init__(
+            self,
+            name: str,
+            rpc: str,
+            chain_id: int,
+            eip1559_tx: bool,
+            coin_symbol: str,
+            explorer: str,
+            decimals: int = 18,
+            max_gwei: int = 15
+    ):
         self.name = name
         self.rpc = rpc
         self.chain_id = chain_id
@@ -119,6 +121,7 @@ class Network:
         self.coin_symbol = coin_symbol
         self.decimals = decimals
         self.explorer = explorer
+        self.max_gwei = max_gwei
 
     def __str__(self):
         return f'{self.name}'
@@ -130,7 +133,8 @@ Ethereum = Network(
     chain_id=1,
     eip1559_tx=True,
     coin_symbol='ETH',
-    explorer='https://etherscan.io/'
+    explorer='https://etherscan.io/',
+    max_gwei=15
 )
 
 Arbitrum = Network(
@@ -198,7 +202,7 @@ BNB = Network(
 
 Linea = Network(
     name='Linea',
-    rpc='https://1rpc.io/linea',
+    rpc='https://rpc.linea.build',
     chain_id=59144,
     eip1559_tx=True,
     coin_symbol='ETH',

@@ -1,56 +1,84 @@
-import asyncio
 import random
+from functools import partialmethod
+from json import JSONDecodeError
 from typing import Callable, Any
 
-from aiohttp import ClientResponseError, ClientConnectionError, ServerDisconnectedError, ClientSession
-from aiohttp_proxy import ProxyConnector
+import curl_cffi.requests
+from curl_cffi.requests import AsyncSession, RequestsError
 from better_proxy import Proxy
 from web3db.models import Profile
 from web3db.utils import DEFAULT_UA
 
 from .logger import logger
 from .sleeping import sleep
+from .windows import set_windows_event_loop_policy
+
+set_windows_event_loop_policy()
 
 RETRY_COUNT = 5
 
 
-class ProfileSession(ClientSession):
-    def __init__(self, profile: Profile, **kwargs) -> None:
+class ProfileSession(AsyncSession):
+    DEFAULT_HEADERS = {
+        "accept": "*/*",
+        "accept-language": "en-US,en",
+        "user-agent": DEFAULT_UA,
+        "sec-ch-ua": '"Not_A Brand";v="8", "Chromium";v="120", "Google Chrome";v="120"',
+        "sec-ch-ua-platform": '"Windows"',
+        "sec-ch-ua-mobile": "?0",
+        "sec-fetch-dest": "empty",
+        "sec-fetch-mode": "cors",
+        "sec-fetch-site": "same-origin",
+        "connection": "keep-alive",
+    }
+
+    def __init__(self, profile: Profile, sleep_echo: bool = True, **kwargs) -> None:
         self.profile = profile
-        verify_ssl = kwargs.get('verify_ssl', False)
-        headers = kwargs.pop('headers', {'User-Agent': DEFAULT_UA})
+        self.sleep_echo = sleep_echo
+        headers = kwargs.pop('headers', self.DEFAULT_HEADERS)
+        impersonate = kwargs.pop('impersonate', curl_cffi.requests.BrowserType.chrome120)
         super().__init__(
-            connector=ProxyConnector.from_url(
-                url=Proxy.from_str(proxy=profile.proxy.proxy_string).as_url, verify_ssl=verify_ssl
-            ),
+            proxy=Proxy.from_str(proxy=profile.proxy.proxy_string).as_url,
             headers=headers,
+            impersonate=impersonate,
             **kwargs
         )
 
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        self.close()
+
     def retry(func: Callable) -> Callable:
         async def wrapper(self, *args, **kwargs) -> Any:
-            method = kwargs.get('method')
+            method = kwargs.get('method', None) or args[0]
             url = kwargs.get('url', 'unknown url')
             delay = kwargs.get('delay', random.uniform(5, 10))
             echo = kwargs.get('echo', True)
+            retry_count = kwargs.get('retry_count', RETRY_COUNT)
             if echo:
                 logger.info(f'{self.profile.id} | {method} {url}')
-            for i in range(RETRY_COUNT):
+            for i in range(retry_count):
                 try:
                     response, data = await func(self, *args, **kwargs)
                     if not kwargs.get('follow_redirects'):
                         response.raise_for_status()
-                    await sleep(delay, profile_id=self.profile.id)
+                    await sleep(delay, profile_id=self.profile.id, echo=self.sleep_echo)
                     return response, data
-                except ServerDisconnectedError as e:
-                    if echo:
-                        logger.error(f'{self.profile.id} | {e.message}. Retrying {i + 1}')
-                    await sleep(delay, profile_id=self.profile.id)
-                    continue
-                except (ClientResponseError, ClientConnectionError) as e:
-                    if echo:
-                        logger.error(f'{self.profile.id} | {url} {e}')
-                    raise e
+                except RequestsError as e:
+                    s = f'{self.profile.id} | {url} {e} {data if data is not None else ""}'
+                    if e.code in (28, 35, 52, 56):
+                        logger.warning(f'{s} Retrying {i + 1}')
+                        await sleep(delay, profile_id=self.profile.id, echo=self.sleep_echo)
+                        continue
+                    elif response.status_code in [400, 401, 404, 500]:
+                        logger.warning(s)
+                        raise e
+                    else:
+                        logger.warning(f'{s} Retrying {i + 1}')
+                        await sleep(delay, profile_id=self.profile.id, echo=self.sleep_echo)
+                        continue
             else:
                 if echo:
                     logger.info(f'{self.profile.id} | Tried to retry {RETRY_COUNT} times. Nothing can do anymore :(')
@@ -64,20 +92,35 @@ class ProfileSession(ClientSession):
             method: str,
             url: str,
             params: dict = None,
+            headers: dict = None,
             data: dict = None,
             json: dict = None,
-            follow_redirects: bool = False
+            follow_redirects: bool = False,
+            verify: bool = False,
+            retry_count: int = RETRY_COUNT,
+            timeout: int = 30
     ):
         response = await super().request(
             method=method,
             url=url,
             params=params,
+            headers=headers,
             data=data,
             json=json,
-            allow_redirects=follow_redirects
+            allow_redirects=follow_redirects,
+            verify=verify,
+            timeout=timeout
         )
-        if response.content_type in ['text/html', 'application/octet-stream', 'text/plain']:
-            data = await response.text()
-        else:
-            data = await response.json()
+        try:
+            data = response.json()
+        except JSONDecodeError:
+            data = response.text
         return response, data
+
+    head = partialmethod(request, "HEAD")
+    get = partialmethod(request, "GET")
+    post = partialmethod(request, "POST")
+    put = partialmethod(request, "PUT")
+    patch = partialmethod(request, "PATCH")
+    delete = partialmethod(request, "DELETE")
+    options = partialmethod(request, "OPTIONS")

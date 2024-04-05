@@ -11,11 +11,18 @@ from utils import read_txt, Z8, ProfileSession, logger
 class Client(RestClient):
     NODE_URL = "https://fullnode.mainnet.aptoslabs.com/v1"
     GRAPHQL_URL = "https://indexer.mainnet.aptoslabs.com/v1/graphql"
+    PAYLOAD = {
+        "function": "",
+        "type_arguments": [],
+        "arguments": [],
+        "type": "entry_function_payload"
+    }
 
-    def __init__(self, profile: Profile, node_url: str = None):
+    def __init__(self, profile: Profile = None, private: str = None, node_url: str = None):
         super().__init__(node_url or self.NODE_URL)
         self.profile = profile
-        self.account_ = Account.load_key(decrypt(profile.aptos_private, os.getenv('PASSPHRASE')))
+        self.account_ = Account.load_key(
+            decrypt(profile.aptos_private, os.getenv('PASSPHRASE')) if profile else private)
 
     async def send_transaction(self, payload: dict) -> int:
         sender = self.account_.address()
@@ -23,23 +30,20 @@ class Client(RestClient):
         while True:
             try:
                 txn_hash = await self.submit_transaction(self.account_, payload)
-                logger.success(f"{self.profile.id} | {str(self.account_.address())} | Sent transaction {txn_hash}")
+                logger.success(
+                    f'{f"{self.profile.id} | " if self.profile else ""}{str(self.account_.address())} | '
+                    f'Sent transaction {txn_hash}'
+                )
                 return sequence
             except Exception as e:
                 if "Transaction already in mempool with a different payload" in str(
                         e) or "SEQUENCE_NUMBER_TOO_OLD" in str(e):
                     sequence += 1
                     continue
-                logger.error(f"{self.profile.id} | {str(self.account_.address())[:6]} | {e}")
+                logger.error(
+                    f'{f"{self.profile.id} | " if self.profile else ""}{str(self.account_.address())[:6]} | {e}'
+                )
                 return False
-
-    async def balance(self) -> float:
-        try:
-            balance = await super().account_balance(self.account_.address()) / Z8
-            logger.info(f'{self.profile.id} | {str(self.account_.address())} | {balance} APT')
-            return balance
-        except ResourceNotFound:
-            return 0
 
     async def v2_token_data(self, collection_id: str) -> list:
         query = read_txt('v2_token.graphql')
@@ -48,7 +52,7 @@ class Client(RestClient):
             response, data = await session.request(
                 method='POST',
                 url=self.GRAPHQL_URL,
-                json_={'query': query, 'variables': variables}
+                json={'query': query, 'variables': variables}
             )
             return data['data']['current_token_ownerships_v2']
 
@@ -59,7 +63,6 @@ class Client(RestClient):
             response, data = await session.request(
                 method='POST',
                 url=self.GRAPHQL_URL,
-                json={'query': query, 'variables': variables},
-                echo=requests_echo
+                json={'query': query, 'variables': variables}
             )
             return data

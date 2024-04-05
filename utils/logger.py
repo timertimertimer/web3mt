@@ -2,7 +2,7 @@ import sys
 from loguru import logger
 from pathlib import Path
 
-MAIN_DIR = Path(__file__).parent
+MAIN_DIR = Path(__file__).parent.parent
 
 
 def error_filter(record):
