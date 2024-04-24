@@ -13,13 +13,13 @@ from dotenv import load_dotenv
 load_dotenv()
 
 db = DBHelper(os.getenv('CONNECTION_STRING'))
-
+passphrase = os.getenv('PASSPHRASE')
 
 async def check_balance_batch(network: Chain):
     profiles = await db.get_all_from_table(Profile)
     tasks = []
     for profile in profiles:
-        client = Client(network, profile)
+        client = Client(network, profile, encryption_password=os.getenv('PASSPHRASE'))
         tasks.append(asyncio.create_task(client.get_native_balance(echo=True)))
     total = await asyncio.gather(*tasks)
     ans = 0
@@ -146,13 +146,24 @@ async def check_yogapetz_insights(profile: Profile):
             f'{profile.id} | {profile.evm_address} | Uncommon: {res[0]}, Rare: {res[1]}, Legendary: {res[2]}, Mythical: {res[3]}')
 
 
+async def polymer_faucet(profile: Profile):
+    client = Client(OP_Sepolia, profile, encryption_password=passphrase)
+    while True:
+        await client.tx(
+            to='0x5c48ab8DFD7abd7D14027FF65f01887F78EfFE0F',
+            data='0x24b5500000000000000000000000000042652e55a036d716cdd760543936e5a6c74523b16368616e6e656c2d3430323732000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000008ca0',
+            name='Polymer Faucet',
+        )
+        await sleep(130)
+
+
 async def main():
-    profiles: list[Profile] = await db.get_all_from_table(Profile)
+    profiles: list[Profile] = await db.get_rows_by_id([1], Profile)
     tasks = []
     for profile in profiles:
-        tasks.append(asyncio.create_task(withdraw_zeta(profile)))
+        tasks.append(asyncio.create_task(polymer_faucet(profile)))
     await asyncio.gather(*tasks)
 
 
 if __name__ == '__main__':
-    asyncio.run(check_balance_batch(Zora))
+    asyncio.run(main())

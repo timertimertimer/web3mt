@@ -8,7 +8,5 @@ if getattr(sys, 'frozen', False):
 else:
     ROOT_DIR = Path(__file__).parent.absolute()
 
-ABIS_DIR = ROOT_DIR / 'abis'
-
-abis = read_json(ABIS_DIR / 'abi.json')
+abis = read_json(ROOT_DIR / 'abi.json')
 OPBNB_BRIDGE_ABI = abis['opbnb_bridge']

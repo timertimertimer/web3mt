@@ -160,6 +160,14 @@ Optimism = Chain(
     coin_symbol='ETH',
     explorer='https://optimistic.etherscan.io/',
 )
+OP_Sepolia = Chain(
+    name='Optimism Sepolia',
+    rpc='https://sepolia.optimism.io',
+    chain_id=11155420,
+    eip1559_tx=True,
+    coin_symbol='ETH',
+    explorer='https://optimism-sepolia.blockscout.com/',
+)
 
 Polygon = Chain(
     name='Polygon',

@@ -50,11 +50,10 @@ class Client:
         self.sleep_echo = sleep_echo
         self.do_no_matter_what = do_no_matter_what
         self.log_info = ''
-        if self.profile:
-            self.log_info += f"{self.profile.id}"
         if self.account:
-            self.log_info += f' | {self.account.address} ({self.network.name})'
-
+            self.log_info += f'{self.account.address} ({self.network.name})'
+        if self.profile:
+            self.log_info = f"{self.profile.id} | {self.log_info}"
         self.okx_api_key = okx_api_key
         self.okx_api_secret = okx_api_secret
         self.okx_passphrase = okx_passphrase
@@ -184,7 +183,7 @@ class Client:
                     logger.debug(
                         f'{self.log_info} | Current GWEI: {gas_price} > {self.network.max_gwei}. Waiting for gwei...'
                     )
-                    await sleep(15)
+                    await sleep(15, profile_id=self.profile.id if self.profile else None, echo=self.sleep_echo)
                 else:
                     break
 
@@ -398,7 +397,8 @@ class Client:
             amount=await self.w3.eth.get_balance(address or self.account.address),
             wei=True
         )
-        Client.NATIVE_PRICE = Client.NATIVE_PRICE or await self.get_token_price(token=self.network.coin_symbol)
+        if get_usd_price:
+            Client.NATIVE_PRICE = Client.NATIVE_PRICE or await self.get_token_price(token=self.network.coin_symbol)
         if echo:
             logger.info(
                 f'{self.log_info} | Balance - {float(balance.Ether)} {self.network.coin_symbol}'

@@ -7,7 +7,6 @@ import curl_cffi.requests
 from curl_cffi.requests import AsyncSession, RequestsError
 from better_proxy import Proxy
 from web3db.models import Profile
-from web3db.utils import DEFAULT_UA
 
 from .logger import logger
 from .sleeping import sleep
@@ -22,7 +21,7 @@ class ProfileSession(AsyncSession):
     DEFAULT_HEADERS = {
         "accept": "*/*",
         "accept-language": "en-US,en",
-        "user-agent": DEFAULT_UA,
+        "user-agent": 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
         "sec-ch-ua": '"Not_A Brand";v="8", "Chromium";v="120", "Google Chrome";v="120"',
         "sec-ch-ua-platform": '"Windows"',
         "sec-ch-ua-mobile": "?0",
@@ -38,6 +37,7 @@ class ProfileSession(AsyncSession):
         self.request_echo = requests_echo
         headers = kwargs.pop('headers', self.DEFAULT_HEADERS)
         impersonate = kwargs.pop('impersonate', curl_cffi.requests.BrowserType.chrome120)
+        self.log_info = f'{self.profile.id}'
         super().__init__(
             proxy=Proxy.from_str(proxy=profile.proxy.proxy_string).as_url,
             headers=headers,
@@ -55,7 +55,7 @@ class ProfileSession(AsyncSession):
         async def wrapper(self, *args, **kwargs) -> Any:
             method = kwargs.get('method', None) or args[0]
             url = kwargs.get('url', 'unknown url')
-            delay = kwargs.pop('delay', random.uniform(5, 10))
+            retry_delay = kwargs.pop('retry_delay', random.uniform(5, 10))
             retry_count = kwargs.pop('retry_count', RETRY_COUNT)
             if self.request_echo:
                 logger.info(f'{self.profile.id} | {method} {url}')
@@ -65,20 +65,20 @@ class ProfileSession(AsyncSession):
                     response, data = await func(self, *args, **kwargs)
                     if not kwargs.get('follow_redirects'):
                         response.raise_for_status()
-                    await sleep(delay, profile_id=self.profile.id, echo=self.sleep_echo)
+                    await sleep(random.uniform(5, 10), profile_id=self.profile.id, echo=self.sleep_echo)
                     return response, data
                 except RequestsError as e:
                     s = f'{self.profile.id} | {url} {e} {data if data is not None else ""}'
                     if e.code in (28, 35, 52, 56):
-                        logger.warning(f'{s} Retrying {i + 1} after {delay} seconds')
-                        await sleep(delay, profile_id=self.profile.id, echo=self.sleep_echo)
+                        logger.warning(f'{s} Retrying {i + 1} after {retry_delay} seconds')
+                        await sleep(retry_delay, profile_id=self.profile.id, echo=self.sleep_echo)
                         continue
                     elif response.status_code in [400, 401, 403, 404, 500]:
                         logger.warning(s)
                         raise e
                     else:
-                        logger.warning(f'{s} Retrying {i + 1} after {delay} seconds')
-                        await sleep(delay, profile_id=self.profile.id, echo=self.sleep_echo)
+                        logger.warning(f'{s} Retrying {i + 1} after {retry_delay} seconds')
+                        await sleep(retry_delay, profile_id=self.profile.id, echo=self.sleep_echo)
                         continue
             else:
                 if self.request_echo:
