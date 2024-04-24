@@ -48,12 +48,13 @@ class ZetachainHub(Client):
         super().__init__(
             network=ZetaChain,
             profile=profile,
+            encryption_password=passphrase,
             delay_between_requests=delay_between_rpc_requests
         )
         self.session = ProfileSession(profile, headers=self.HEADERS, requests_echo=False, verify=False)
         self.tasks = {
             "SEND_ZETA": self.receive_and_transfer,
-            "RECEIVE_ZETA": self.receive_and_transfer,
+            "RECEIVE_ZETA": None,
             "POOL_DEPOSIT_ANY_POOL": self.lp_pool,
             "RECEIVE_BTC": self.receive_btc,
             "RECEIVE_ETH": self.receive_eth,
@@ -72,7 +73,9 @@ class ZetachainHub(Client):
             "WALLET_VERIFY_BY_INVITE": None,
             "LEAGUE_OF_THRONES_STATE_CHANGED": None,
             "ZEBRA_PROTOCOL_TROVE_UPDATED": None,
-            "SPACE_ID_GET_ZETA_DOMAIN": None
+            "SPACE_ID_GET_ZETA_DOMAIN": None,
+            "WEAVE_6_BUY_OR_SELL_NFT": None,
+            "ULTIVERSE_ULTIPILOT_EXPLORE": None
         }
 
     async def __aexit__(self, exc_type, exc_val, exc_tb):
@@ -107,7 +110,7 @@ class ZetachainHub(Client):
             abi=invitation_manager_abi
         )
         if await contract.functions.hasBeenVerified(self.account.address).call():
-            logger.info(f"{self.profile.id} | {self.account.address} | Already enrolled...")
+            logger.info(f"{self.log_info} | Already enrolled...")
             return
         await sleep(delay_between_rpc_requests, echo=False)
         await self.tx(
@@ -123,13 +126,10 @@ class ZetachainHub(Client):
                     url="https://xp.cl04.zetachain.com/v1/enroll-in-zeta-xp",
                     json={"address": self.account.address}
                 )
-                logger.info(
-                    f"{self.profile.id} | {self.account.address} | "
-                    f"Verify enroll status: {data['isUserVerified']}"
-                )
+                logger.info(f"{self.log_info} | Verify enroll status: {data['isUserVerified']}")
                 return
             except RequestsError:
-                await sleep(600, 800)
+                await sleep(600, 800, profile_id=self.profile.id)
 
     async def ultiverse_badge(self):
         async def get_mint_data():
@@ -171,9 +171,7 @@ class ZetachainHub(Client):
                         )
                         if data['success']:
                             return data['data']
-                        logger.warning(
-                            f'{self.profile.id} | {self.account.address} | {data["err"]} - {badge["name"]}'
-                        )
+                        logger.warning(f'{self.log_info} | {data["err"]} - {badge["name"]}')
 
         mint_data = await get_mint_data()
         if not mint_data:
@@ -263,14 +261,18 @@ class ZetachainHub(Client):
                 await sleep(30)
 
     async def receive_and_transfer(self):
-        await self.tx(to=self.account.address, name='"Send ZETA in ZetaChain" and "Receive ZETA in ZetaChain" task')
+        await self.tx(
+            to=self.account.address,
+            name='"Send ZETA in ZetaChain" and "Receive ZETA in ZetaChain" task',
+            value=TokenAmount(0.01)
+        )
 
     async def receive_bnb(self) -> None:
         bsc_client = Client(BNB, account=self.account)
         if (await bsc_client.get_native_balance()).Ether == 0:
             return
         await sleep(delay_between_rpc_requests, echo=False)
-        await self.tx(
+        await bsc_client.tx(
             to=bsc_client.w3.to_checksum_address('0x70e967acFcC17c3941E87562161406d41676FD83'),
             value=TokenAmount(random.randint(10 ** 9, 10 ** 10), wei=True),
             name='"Receive BNB in ZetaChain" task'
@@ -377,7 +379,7 @@ class ZetachainHub(Client):
         stZETA_balance = await self.balance_of(token_address=TOKENS['stZETA'])
         if amount:
             if stZETA_balance.Wei >= amount:
-                logger.info(f'{self.profile.id} | {self.account.address} | Already staking {stZETA_balance} stZETA')
+                logger.info(f'{self.log_info} | Already staking {stZETA_balance} stZETA')
                 return
         await sleep(delay_between_rpc_requests, echo=False)
         await self.tx(
@@ -393,7 +395,7 @@ class ZetachainHub(Client):
         async def wrap_zeta(amount: int):
             WZETA_balance = await self.balance_of(token_address=TOKENS['WZETA'])
             if WZETA_balance.Wei >= amount:
-                logger.info(f'{self.profile.id} | {self.account.address} | Already wrapped {WZETA_balance} WZETA')
+                logger.info(f'{self.log_info} | Already wrapped {WZETA_balance} WZETA')
                 return
             await sleep(delay_between_rpc_requests, echo=False)
             await self.tx(
@@ -500,11 +502,11 @@ class ZetachainHub(Client):
                         'Origin': 'https://hub.zetachain.com',
                         'Referer': 'https://hub.zetachain.com/'
                     },
-                    delay=random.uniform(200, 300)
+                    retry_delay=random.uniform(200, 300)
                 )
                 break
             except RequestsError:
-                await sleep(600, 800)
+                await sleep(600, 800, profile_id=self.profile.id)
 
         tasks_to_refresh = []
         tasks_to_do = []
@@ -518,7 +520,7 @@ class ZetachainHub(Client):
     async def claim_tasks(self) -> list[str]:
         completed_tasks, available_tasks = await self.check_tasks()
         if not completed_tasks:
-            logger.info(f"{self.profile.id} | {self.account.address} | Nothing to claim")
+            logger.info(f"{self.log_info} | Nothing to claim")
         for task in completed_tasks:
             claim_data = {
                 "address": self.account.address,
@@ -537,9 +539,9 @@ class ZetachainHub(Client):
                     )
                     break
                 except RequestsError:
-                    await sleep(600, 800)
+                    await sleep(600, 800, profile_id=self.profile.id)
 
-            logger.success(f"{self.profile.id} | {self.account.address} | Claimed {task} task")
+            logger.success(f"{self.log_info} | Claimed {task} task")
             await sleep(delay_between_http_requests, echo=False)
         return available_tasks
 
@@ -555,18 +557,18 @@ class ZetachainHub(Client):
                 )
                 return {'level': data['level'], 'points': data['totalXp'], 'rank': data['rank']}
             except RequestsError:
-                await sleep(600, 800)
+                await sleep(600, 800, profile_id=self.profile.id)
 
 
 async def process_account(profile: Profile) -> dict | None:
     async with ZetachainHub(profile) as zh:
-        logger.info(f'{profile.id} | {zh.account.address} | Balance {await zh.get_native_balance()} ZETA')
+        logger.info(f'{zh.log_info} | Balance {await zh.get_native_balance()} ZETA')
         await zh.enroll()
         await sleep(delay_between_http_requests, echo=False)
         await zh.enroll_verify()
         await sleep(delay_between_http_requests, echo=False)
         available_quests = await zh.claim_tasks()
-        logger.info(f'{profile.id} | {zh.account.address} | Available tasks: {", ".join(available_quests)}')
+        logger.info(f'{zh.log_info} | Available tasks: {", ".join(available_quests)}')
         await sleep(delay_between_http_requests, echo=False)
         if choice == 1:
             for task in random.sample(available_quests, len(available_quests)):
@@ -574,7 +576,7 @@ async def process_account(profile: Profile) -> dict | None:
                     await zh.tasks[task]()
                     await sleep(random.uniform(30, 60))
         await zh.claim_tasks()
-        logger.success(f'{profile.id} | {zh.account.address} | All tasks claimed')
+        logger.success(f'{zh.log_info} | All tasks claimed')
         stats = await zh.get_stats()
         return {'address': zh.account.address, **stats}
 
@@ -632,23 +634,26 @@ async def main():
     await create_table()
     db = DBHelper(os.getenv('CONNECTION_STRING'))
     profiles: list[Profile] = await db.get_rows_by_id([
-        1, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 110, 111, 112, 113, 114, 115, 116, 118, 119, 120, 121, 122,
-        123, 124, 125, 126, 127, 128, 129, 130, 131, 132, 133, 134, 135, 136, 137, 138, 141, 142, 143, 144, 145, 146,
-        147, 148, 149, 150, 151, 152, 153, 154, 155, 156, 157, 158, 159, 160, 161, 168, 268, 269, 274, 275, 280, 281,
-        282, 284, 286, 287, 288, 289, 292, 295, 296, 297, 300, 301, 302, 303, 304, 306, 307, 309, 310, 312, 313, 314,
-        315, 318, 319, 320, 322, 325, 326, 329, 330, 331, 337, 338, 340, 341, 345, 346, 347, 348, 350, 351, 352, 354,
-        355, 356, 357, 358, 359, 360, 362, 363, 364
+        1,
+        # 99, 100,
+        # 101,
+        # 102, 103, 104, 105, 106, 107, 108, 110, 111, 112, 113, 114, 115, 116, 118, 119, 120, 121, 122,
+        # 123, 124, 125, 126, 127, 128, 129, 130, 131, 132, 133, 134, 135, 136, 137, 138, 141, 142, 143, 144, 145, 146,
+        # 147, 148, 149, 150, 151, 152, 153, 154, 155, 156, 157, 158, 159, 160, 161, 168, 268, 269, 274, 275, 280, 281,
+        # 282, 284, 286, 287, 288, 289, 292, 295, 296, 297, 300, 301, 302, 303, 304, 306, 307, 309, 310, 312, 313, 314,
+        # 315, 318, 319, 320, 322, 325, 326, 329, 330, 331, 337, 338, 340, 341, 345, 346, 347, 348, 350, 351, 352, 354,
+        # 355, 356, 357, 358, 359, 360, 362, 363, 364
     ], Profile)
     stats = await asyncio.gather(*[asyncio.create_task(process_account(profile)) for profile in profiles])
     return stats or (await update_stats(**stat) for stat in stats)
 
 
 if __name__ == "__main__":
-    zeta_price, bnb_price = asyncio.run(zeta_and_bnb_price())
     passphrase = os.getenv('PASSPHRASE')
     okx_api_key = os.getenv('OKX_API_KEY')
     okx_api_secret = os.getenv('OKX_API_SECRET')
     okx_passphrase = os.getenv('OKX_API_PASSPHRASE')
+    zeta_price, bnb_price = asyncio.run(zeta_and_bnb_price())
     logger.info(f'ZETA: {zeta_price}, BNB: {bnb_price}')
     choice = int(
         input(

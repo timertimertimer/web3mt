@@ -11,8 +11,8 @@ Source = "https://github.com/timertimertimer/web3mt"
 
 [tool.poetry.dependencies]
 python = "^3.11"
-web3 = "^6.17.0"
-web3db = "^1.0.0"
+web3 = "^6.17.2"
+web3db = "^1.0.2"
 python-okx = "^0.2.8"
 loguru = "^0.7.2"
 curl-cffi = "^0.6.2"
