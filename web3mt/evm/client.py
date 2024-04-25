@@ -33,6 +33,7 @@ class Client:
             delay_between_requests: int = 0,
             sleep_echo: bool = False,
             do_no_matter_what: bool = False,
+            wait_for_gwei: bool = True,
             okx_api_key: str = None,
             okx_api_secret: str = None,
             okx_passphrase: str = None,
@@ -49,6 +50,7 @@ class Client:
         self.delay_between_requests = delay_between_requests
         self.sleep_echo = sleep_echo
         self.do_no_matter_what = do_no_matter_what
+        self.wait_for_gwei = wait_for_gwei
         self.log_info = ''
         if self.account:
             self.log_info += f'{self.account.address} ({self.network.name})'
@@ -176,7 +178,7 @@ class Client:
         if value:
             tx_params['value'] = value
 
-        if self.network.max_gwei:
+        if self.network.max_gwei and self.wait_for_gwei:
             while True:
                 gas_price = self.w3.from_wei(await self.w3.eth.gas_price, 'gwei')
                 if gas_price > self.network.max_gwei:
@@ -228,10 +230,21 @@ class Client:
                 break
             except ValueError as e:
                 if 'invalid nonce' in e.args[0]["message"] or 'nonce too low' in e.args[0]["message"]:
-                    tx_params['nonce'] += 1
+                    old_nonce = tx_params["nonce"]
+                    tx_params["nonce"] = new_nonce = tx_params["nonce"] + 1
+                    logger.warning(
+                        f'{self.log_info} | {e.args[0]["message"]}. Increasing nonce from {old_nonce} to {new_nonce}'
+                    )
                     continue
                 elif 'replacement transaction underpriced' in e.args[0]["message"]:
-                    tx_params['maxPriorityFeePerGas'] = int(tx_params['maxPriorityFeePerGas'] * self.INCREASE_GWEI)
+                    old_priority_fee = tx_params['maxPriorityFeePerGas']
+                    tx_params['maxPriorityFeePerGas'] = new_priority_fee = (
+                        int(tx_params['maxPriorityFeePerGas'] * self.INCREASE_GWEI)
+                    )
+                    logger.warning(
+                        f'{self.log_info} | {e.args[0]["message"]}. '
+                        f'Increasing max priorty fee from {old_priority_fee} to {new_priority_fee}'
+                    )
                     continue
                 logger.error(f'{self.log_info} | {e.args[0]["message"]}')
                 return False, e
