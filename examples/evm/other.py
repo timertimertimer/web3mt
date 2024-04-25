@@ -148,6 +148,7 @@ async def check_yogapetz_insights(profile: Profile):
 
 async def polymer_faucet(profile: Profile):
     client = Client(OP_Sepolia, profile, encryption_password=passphrase)
+    client.INCREASE_GWEI = 1.1
     while True:
         await client.tx(
             to='0x5c48ab8DFD7abd7D14027FF65f01887F78EfFE0F',

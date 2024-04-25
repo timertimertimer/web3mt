@@ -230,6 +230,9 @@ class Client:
                 if 'invalid nonce' in e.args[0]["message"] or 'nonce too low' in e.args[0]["message"]:
                     tx_params['nonce'] += 1
                     continue
+                elif 'replacement transaction underpriced' in e.args[0]["message"]:
+                    tx_params['maxPriorityFeePerGas'] = int(tx_params['maxPriorityFeePerGas'] * self.INCREASE_GWEI)
+                    continue
                 logger.error(f'{self.log_info} | {e.args[0]["message"]}')
                 return False, e
             except Exception as e:
