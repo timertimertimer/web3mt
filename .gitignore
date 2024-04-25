@@ -5,3 +5,5 @@ env
 .env
 .idea
 *.db
+__pycache__
+poetry.lock
