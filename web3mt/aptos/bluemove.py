@@ -1,16 +1,16 @@
 from web3db import Profile
 
-from client import Client
-from web3mt.utils import ProfileSession
+from .client import Client
+from web3mt.utils import ProfileSession, logger, Z8
 
 
 class BlueMove(Client):
     BLUEMOVE_API_URL = 'https://aptos-mainnet-api.bluemove.net/api/'
 
-    def __init__(self, profile: Profile, node_url: str = None):
-        super().__init__(profile, node_url)
+    def __init__(self, profile: Profile, encryption_password: str, node_url: str = Client.NODE_URL):
+        super().__init__(profile, encryption_password=encryption_password, node_url=node_url)
         self.session = ProfileSession(
-            profile,
+            profile, False, False,
             headers={'Origin': 'https://bluemove.net', 'Referer': 'https://bluemove.net/'}
         )
 
@@ -20,7 +20,7 @@ class BlueMove(Client):
 
     async def __aexit__(self, exc_type, exc_val, exc_tb):
         await self.session.close()
-        await self.close()
+        await super().__aexit__(exc_type, exc_val, exc_tb)
 
     async def get_message(self):
         response, data = await self.session.post(
@@ -68,3 +68,39 @@ class BlueMove(Client):
             params={'populate': '*'}
         )
         return data['attributes']
+
+    async def batch_list_token_v2(self, storage_ids: list[str] | str, prices: list[float] | float) -> int | bool:
+        if not storage_ids:
+            logger.warning(f'{self.log_info} | Nothing to list. Storage ids list is empty')
+            return False
+        if isinstance(storage_ids, str):
+            storage_ids = [storage_ids]
+        if isinstance(prices, float):
+            prices = [prices] * len(storage_ids)
+        logger.info(f'{self.log_info} | Listing {storage_ids}')
+        payload = self.PAYLOAD
+        payload['function'] = (
+            "0xd520d8669b0a3de23119898dcdff3e0a27910db247663646ad18cf16e44c6f5"
+            "::coin_listing::batch_list_token_v2"
+        )
+        payload['type_arguments'] = ["0x1::object::ObjectCore", "0x1::aptos_coin::AptosCoin"]
+        payload['arguments'] = [
+            [{'inner': sid} for sid in storage_ids],
+            '0xb3e77042cc302994d7ae913d04286f61ecd2dbc4a73f6c7dbcb4333f3524b9d7',
+            [str(int(price * Z8)) for price in prices]
+        ]
+        return await self.send_transaction(payload)
+
+    async def edit_listing_price(self, token_name: str, listing_id: str, price: float) -> int | bool:
+        logger.info(f'{self.log_info} | Editing listing price {token_name}')
+        payload = self.PAYLOAD.copy()
+        payload['function'] = (
+            "0xd520d8669b0a3de23119898dcdff3e0a27910db247663646ad18cf16e44c6f5"
+            "::coin_listing::edit_fixed_price"
+        )
+        payload['type_arguments'] = ["0x1::aptos_coin::AptosCoin"]
+        payload['arguments'] = [
+            '0xb3e77042cc302994d7ae913d04286f61ecd2dbc4a73f6c7dbcb4333f3524b9d7',
+            listing_id, str(int(price * Z8))
+        ]
+        return await self.send_transaction(payload)

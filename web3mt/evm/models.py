@@ -1,6 +1,8 @@
+import asyncio
 from dataclasses import dataclass
 from decimal import Decimal
 from typing import Union
+from web3db import Profile
 
 
 @dataclass
@@ -120,17 +122,81 @@ class Chain:
             decimals: int = 18,
             max_gwei: int = 15
     ):
-        self.name = name
-        self.rpc = rpc
-        self.chain_id = chain_id
-        self.eip1559_tx = eip1559_tx
-        self.coin_symbol = coin_symbol
-        self.decimals = decimals
-        self.explorer = explorer
-        self.max_gwei = max_gwei
+        self._name = name
+        self._rpc = rpc
+        self._chain_id = chain_id
+        self._eip1559_tx = eip1559_tx
+        self._coin_symbol = coin_symbol
+        self._explorer = explorer.rstrip('/')
+        self._decimals = decimals
+        self._max_gwei = max_gwei
 
     def __str__(self):
         return f'{self.name}'
+
+    @property
+    def name(self):
+        return self._name
+
+    @property
+    def rpc(self):
+        return self._rpc
+
+    @property
+    def chain_id(self):
+        return self._chain_id
+
+    @property
+    def eip1559_tx(self):
+        return self._eip1559_tx
+
+    @property
+    def coin_symbol(self):
+        return self._coin_symbol
+
+    @property
+    def explorer(self):
+        return self._explorer
+
+    @property
+    def decimals(self):
+        return self._decimals
+
+    @property
+    def max_gwei(self):
+        return self._max_gwei
+
+    @name.setter
+    def name(self, value):
+        self._name = value
+
+    @rpc.setter
+    def rpc(self, value):
+        self._rpc = value
+
+    @chain_id.setter
+    def chain_id(self, value):
+        self._chain_id = value
+
+    @eip1559_tx.setter
+    def eip1559_tx(self, value):
+        self._eip1559_tx = value
+
+    @coin_symbol.setter
+    def coin_symbol(self, value):
+        self._coin_symbol = value
+
+    @explorer.setter
+    def explorer(self, value):
+        self._explorer = value
+
+    @decimals.setter
+    def decimals(self, value):
+        self._decimals = value
+
+    @max_gwei.setter
+    def max_gwei(self, value):
+        self._max_gwei = value
 
 
 Ethereum = Chain(
@@ -246,17 +312,87 @@ ZetaChain = Chain(
     chain_id=7000,
     eip1559_tx=True,
     coin_symbol='ZETA',
-    explorer='https://explorer.zetachain.com/'
+    explorer='https://zetachain.blockscout.com/'
 )
+from web3mt.evm.client import Client
 
-Scroll = Chain(
-    name='Scroll',
-    rpc='https://scroll.drpc.org',
-    chain_id=534352,
-    eip1559_tx=True,
-    coin_symbol='ETH',
-    explorer='https://scrollscan.com/'
-)
+
+class Scroll(Chain, Client):
+    def __init__(self, profile: Profile, encryption_password: str):
+        Chain.__init__(
+            self,
+            name='Scroll',
+            rpc='https://scroll.drpc.org',
+            chain_id=534352,
+            eip1559_tx=True,
+            coin_symbol='ETH',
+            explorer='https://scrollscan.com/'
+        )
+        Client.__init__(self, self, profile, encryption_password=encryption_password)
+
+    async def withdraw(self, amount: TokenAmount = None) -> bool:
+        contract = self.w3.eth.contract(
+            self.w3.to_checksum_address('0x781e90f1c8fc4611c9b7497c3b47f99ef6969cbc'),
+            abi=[
+                {"inputs": [
+                    {
+                        "internalType": "address",
+                        "name": "_to",
+                        "type": "address"
+                    },
+                    {
+                        "internalType": "uint256",
+                        "name": "_value",
+                        "type": "uint256"
+                    },
+                    {
+                        "internalType": "bytes",
+                        "name": "_message",
+                        "type": "bytes"
+                    },
+                    {
+                        "internalType": "uint256",
+                        "name": "_gasLimit",
+                        "type": "uint256"
+                    }
+                ],
+                    "name": "sendMessage",
+                    "outputs": [],
+                    "stateMutability": "payable",
+                    "type": "function"}
+            ]
+        )
+        tx_params = {
+            'from': self.account.address,
+            'value': int((await self.get_native_balance()).Wei * 0.9),
+            'nonce': await self.nonce(),
+            'gasPrice': await self.w3.eth.gas_price,
+        }
+        tx_params['gas'] = await self.w3.eth.estimate_gas(
+            {
+                **tx_params,
+                'to': contract.address,
+                'data': contract.encodeABI('sendMessage', args=[
+                    self.account.address,
+                    int((await self.get_native_balance()).Wei * 0.9),
+                    b'',
+                    0
+                ])
+            }
+        )
+        tx = await contract.functions.sendMessage(
+            self.account.address,
+            int((await self.get_native_balance()).Wei * 0.9),
+            b'',
+            0
+        ).build_transaction(tx_params)
+        return tx
+        # return await self.tx(
+        #     '0x781e90f1c8fc4611c9b7497c3b47f99ef6969cbc', 'Bridge to Ethereum',
+        #     contract.encodeABI('sendMessage', args=[self.account.address, (amount.Wei)]),
+        #     full_balance=bool(amount)
+        # )
+
 
 Zora = Chain(
     name='Zora',

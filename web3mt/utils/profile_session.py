@@ -35,7 +35,7 @@ class ProfileSession(AsyncSession):
         self.profile = profile
         self.sleep_echo = sleep_echo
         self.request_echo = requests_echo
-        headers = kwargs.pop('headers', self.DEFAULT_HEADERS)
+        headers = {**self.DEFAULT_HEADERS, **kwargs.pop('headers', {})}
         impersonate = kwargs.pop('impersonate', curl_cffi.requests.BrowserType.chrome120)
         self.log_info = f'{self.profile.id}'
         super().__init__(

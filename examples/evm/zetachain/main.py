@@ -2,19 +2,15 @@ import os
 import random
 import asyncio
 from datetime import datetime
-
 from dotenv import load_dotenv
-
-from web3db.utils import DEFAULT_UA
 from web3db import Profile, DBHelper
 from curl_cffi.requests import RequestsError
 from eth_account.messages import encode_typed_data, encode_defunct
 
 from web3mt.evm.client import Client
 from web3mt.evm.models import ZetaChain, BNB, TokenAmount, DefaultABIs
-
-from examples.evm.zetachain.config import *
 from web3mt.utils import set_windows_event_loop_policy, logger, sleep, ProfileSession
+from examples.evm.zetachain.config import *
 from examples.evm.zetachain.db import update_stats, create_table
 
 load_dotenv()
@@ -27,22 +23,6 @@ async def zeta_and_bnb_price() -> tuple[float, float]:
 
 
 class ZetachainHub(Client):
-    HEADERS = {
-        "User-Agent": DEFAULT_UA,
-        "Accept": "application/json, text/plain, */*",
-        "Accept-Encoding": "gzip, deflate, br",
-        "Accept-Language": "en-US,en;q=0.9",
-        "Content-Type": "application/json",
-        "Sec-Ch-Ua": '"Chromium";v="120", "Not(A:Brand";v="24", "Google Chrome";v="120"',
-        "Sec-Ch-Ua-Mobile": "?0",
-        "Sec-Ch-Ua-Platform": '"Windows"',
-        "Sec-Fetch-Dest": "empty",
-        "Sec-Fetch-Mode": "cors",
-        "Sec-Fetch-Site": "same-site",
-        "Connection": "keep-alive",
-        'Origin': 'https://hub.zetachain.com',
-        'Referer': 'https://hub.zetachain.com/'
-    }
 
     def __init__(self, profile: Profile):
         super().__init__(
@@ -51,7 +31,12 @@ class ZetachainHub(Client):
             encryption_password=passphrase,
             delay_between_requests=delay_between_rpc_requests
         )
-        self.session = ProfileSession(profile, headers=self.HEADERS, requests_echo=False, verify=False)
+        self.session = ProfileSession(
+            profile, headers={
+                'Origin': 'https://hub.zetachain.com',
+                'Referer': 'https://hub.zetachain.com/'
+            }, requests_echo=False, verify=False
+        )
         self.tasks = {
             "SEND_ZETA": self.receive_and_transfer,
             "RECEIVE_ZETA": None,
@@ -75,7 +60,7 @@ class ZetachainHub(Client):
             "ZEBRA_PROTOCOL_TROVE_UPDATED": None,
             "SPACE_ID_GET_ZETA_DOMAIN": None,
             "WEAVE_6_BUY_OR_SELL_NFT": None,
-            "ULTIVERSE_ULTIPILOT_EXPLORE": None
+            "ULTIVERSE_ULTIPILOT_EXPLORE": self.ultiverse_explore,
         }
 
     async def __aexit__(self, exc_type, exc_val, exc_tb):
@@ -92,7 +77,7 @@ class ZetachainHub(Client):
                     {"name": "chainId", "type": "uint256"},
                 ],
             },
-            "domain": {"name": "Hub/XP", "version": "1", "chainId": 7000},
+            "domain": {"name": "Hub/XP", "version": "1", "chainId": self.network.chain_id},
             "primaryType": "Message",
             "message": {"content": "Claim XP"},
         }
@@ -131,43 +116,84 @@ class ZetachainHub(Client):
             except RequestsError:
                 await sleep(600, 800, profile_id=self.profile.id)
 
+    async def ultiverse_explore(self):
+        name = '"Explore" any ZetaChain network event on Ultiverse'
+        session = ProfileSession(
+            self.profile, headers={
+                'Origin': 'https://pilot-zetachain.ultiverse.io',
+                'Referer': 'https://pilot-zetachain.ultiverse.io/',
+                'Ul-Auth-Api-Key': 'YWktYWdlbnRAZFd4MGFYWmxjbk5s'
+            }, sleep_echo=False, requests_echo=False, verify=False
+        )
+        response, data = await session.post(
+            url=f'https://account-api.ultiverse.io/api/user/signature',
+            json={"address": self.account.address, 'chainId': self.network.chain_id, 'feature': "assets-wallet-login"}
+        )
+        message = data['data']['message']
+        signature = self.w3.eth.account.sign_message(
+            encode_defunct(text=message),
+            private_key=self.account.key.hex()
+        ).signature.hex()
+        response, data = await session.post(
+            url='https://account-api.ultiverse.io/api/wallets/signin',
+            json={"address": self.account.address, 'chainId': self.network.chain_id, 'signature': signature}
+        )
+        auth_token = data['data']['access_token']
+        session.headers.update({'Ul-Auth-Token': auth_token, 'Ul-Auth-Address': self.account.address})
+        session.cookies.update({'Ultiverse_Authorization': auth_token})
+
+        session.headers.pop('Ul-Auth-Api-Key')
+        response, data = await session.post(
+            url='https://pml.ultiverse.io/api/explore/sign',
+            json={'worldIds': ["Terminus"], 'chainId': self.network.chain_id}
+        )
+        data = data['data']
+        contract = self.w3.eth.contract(
+            address=self.w3.to_checksum_address(data['contract']),
+            abi=ultiverse_explore_abi
+        )
+        await self.tx(
+            to=contract.address, name=name,
+            data=contract.encodeABI('explore', args=[
+                data['deadline'], data['voyageId'], data['destinations'], data['data'], data['signature']
+            ])
+        )
+
     async def ultiverse_badge(self):
         async def get_mint_data():
-            headers = {
-                'Origin': 'https://mission.ultiverse.io',
-                'Referer': 'https://mission.ultiverse.io/',
-                'Ul-Auth-Api-Key': 'bWlzc2lvbl9ydW5uZXJAZFd4MGFYWmxjbk5s'
-            }
-            response, data = await self.session.post(
-                url='https://toolkit.ultiverse.io/api/user/signature',
-                json={"address": self.account.address, 'chainId': 1, 'feature': "assets-wallet-login"},
-                headers=headers
+            session = ProfileSession(
+                self.profile, headers={
+                    'Origin': 'https://mission.ultiverse.io',
+                    'Referer': 'https://mission.ultiverse.io/',
+                    'Ul-Auth-Api-Key': 'bWlzc2lvbl9ydW5uZXJAZFd4MGFYWmxjbk5s'
+                }, sleep_echo=False, requests_echo=False, verify=False
+            )
+            response, data = await session.post(
+                url=f'https://toolkit.ultiverse.io/api/user/signature',
+                json={
+                    "address": self.account.address, 'chainId': self.network.chain_id, 'feature': "assets-wallet-login"
+                }
             )
             message = data['data']['message']
             signature = self.w3.eth.account.sign_message(
                 encode_defunct(text=message),
                 private_key=self.account.key.hex()
             ).signature.hex()
-            response, data = await self.session.post(
+            response, data = await session.post(
                 url='https://toolkit.ultiverse.io/api/wallets/signin',
-                json={"address": self.account.address, 'chainId': 1, 'signature': signature},
-                headers=headers
+                json={"address": self.account.address, 'chainId': self.network.chain_id, 'signature': signature}
             )
             auth_token = data['data']['access_token']
-            headers['Ul-Auth-Token'] = auth_token
-            cookies = {'Ultiverse_Authorization': auth_token}
-            response, data = await self.session.get(
-                url='https://mission.ultiverse.io/api/tickets/list', headers=headers, cookies=cookies
-            )
+            session.headers.update({'Ul-Auth-Token': auth_token})
+            session.cookies.update({'Ultiverse_Authorization': auth_token})
+            response, data = await session.get(url='https://mission.ultiverse.io/api/tickets/list')
             while True:
                 for badge in data['data']:
                     if badge['endAt'] > int(datetime.now().timestamp()) > badge['startAt']:
                         event_id = badge['eventId']
-                        response, data = await self.session.post(
+                        response, data = await session.post(
                             url="https://mission.ultiverse.io/api/tickets/mint",
-                            json={"address": self.account.address, 'eventId': event_id},
-                            headers=headers,
-                            cookies=cookies
+                            json={"address": self.account.address, 'eventId': event_id}
                         )
                         if data['success']:
                             return data['data']
@@ -268,7 +294,7 @@ class ZetachainHub(Client):
         )
 
     async def receive_bnb(self) -> None:
-        bsc_client = Client(BNB, account=self.account)
+        bsc_client = Client(BNB, self.profile, passphrase)
         if (await bsc_client.get_native_balance()).Ether == 0:
             return
         await sleep(delay_between_rpc_requests, echo=False)
@@ -466,7 +492,7 @@ class ZetachainHub(Client):
                     address=TOKENS['wstZETA'],
                     abi=wstZETA_abi
                 ).encodeABI('deposit', args=[stZETA_amount, self.account.address]),
-                name='FEATURE | "Mint and stake stZETA on Accumulated Finance" task'
+                name='"Mint and stake stZETA on Accumulated Finance" task'
             )
 
         await deposit_stZETA()
@@ -488,7 +514,7 @@ class ZetachainHub(Client):
                          f'020000000000000000000000005f0b1a82749cb4e2278ec87f8bf6b618dc71a8bf000000000000000000000000'
                          f'{random.choice(list(ZRC20_TOKENS.values()) + [TOKENS["WZETA"], TOKENS["stZETA"]])[2:]}',
                     value=TokenAmount(random.randrange(TokenAmount(0.001).Wei), wei=True),
-                    name='FEATURE | "Swap any tokens on Eddy Finance" task'
+                    name='"Swap any tokens on Eddy Finance" task'
             ):
                 return
 
@@ -634,10 +660,8 @@ async def main():
     await create_table()
     db = DBHelper(os.getenv('CONNECTION_STRING'))
     profiles: list[Profile] = await db.get_rows_by_id([
-        1,
-        # 99, 100,
-        # 101,
-        # 102, 103, 104, 105, 106, 107, 108, 110, 111, 112, 113, 114, 115, 116, 118, 119, 120, 121, 122,
+        # 1,
+        # 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 110, 111, 112, 113, 114, 115, 116, 118, 119, 120, 121, 122,
         # 123, 124, 125, 126, 127, 128, 129, 130, 131, 132, 133, 134, 135, 136, 137, 138, 141, 142, 143, 144, 145, 146,
         # 147, 148, 149, 150, 151, 152, 153, 154, 155, 156, 157, 158, 159, 160, 161, 168, 268, 269, 274, 275, 280, 281,
         # 282, 284, 286, 287, 288, 289, 292, 295, 296, 297, 300, 301, 302, 303, 304, 306, 307, 309, 310, 312, 313, 314,

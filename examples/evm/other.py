@@ -15,6 +15,7 @@ load_dotenv()
 db = DBHelper(os.getenv('CONNECTION_STRING'))
 passphrase = os.getenv('PASSPHRASE')
 
+
 async def check_balance_batch(network: Chain):
     profiles = await db.get_all_from_table(Profile)
     tasks = []
@@ -158,11 +159,16 @@ async def polymer_faucet(profile: Profile):
         await sleep(130)
 
 
+async def withdraw_scroll(profile: Profile):
+    client = Scroll(profile, passphrase)
+    await client.withdraw()
+
+
 async def main():
-    profiles: list[Profile] = await db.get_rows_by_id([1], Profile)
+    profiles: list[Profile] = await db.get_rows_by_id([99], Profile)
     tasks = []
     for profile in profiles:
-        tasks.append(asyncio.create_task(polymer_faucet(profile)))
+        tasks.append(asyncio.create_task(withdraw_scroll(profile)))
     await asyncio.gather(*tasks)
 
 

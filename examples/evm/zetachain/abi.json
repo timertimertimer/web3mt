@@ -4306,5 +4306,40 @@
       "stateMutability": "payable",
       "type": "function"
     }
+  ],
+  "ultiverse_explore": [
+    {
+      "inputs": [
+        {
+          "internalType": "uint256",
+          "name": "deadline",
+          "type": "uint256"
+        },
+        {
+          "internalType": "uint256",
+          "name": "voyageId",
+          "type": "uint256"
+        },
+        {
+          "internalType": "uint16[]",
+          "name": "destinations",
+          "type": "uint16[]"
+        },
+        {
+          "internalType": "bytes32",
+          "name": "data",
+          "type": "bytes32"
+        },
+        {
+          "internalType": "bytes",
+          "name": "signature",
+          "type": "bytes"
+        }
+      ],
+      "name": "explore",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    }
   ]
 }

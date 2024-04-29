@@ -1,4 +1,4 @@
-query MyQuery($owner_address: String, $collection_id: String) {
+query CurrentTokens($owner_address: String, $collection_id: String) {
     current_token_ownerships_v2(
         where: {
             current_token_data: {
@@ -6,7 +6,8 @@ query MyQuery($owner_address: String, $collection_id: String) {
                     collection_id: {_eq: $collection_id}
                 }
             },
-            owner_address: {_eq: $owner_address}
+            owner_address: {_eq: $owner_address},
+            amount: {_gt: "0"}
         }
     ) {
         storage_id

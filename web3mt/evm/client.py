@@ -10,7 +10,6 @@ from web3.exceptions import ABIFunctionNotFound, ContractLogicError, TimeExhaust
 from eth_account import Account
 from eth_account.messages import encode_defunct
 from okx.MarketData import MarketAPI
-
 from web3db.utils import decrypt
 from web3db.models import Profile
 
@@ -27,8 +26,8 @@ class Client:
             self,
             network: Chain = Ethereum,
             profile: Profile = None,
-            account: Account = None,
             encryption_password: str = None,
+            account: Account = None,
             proxy: str = None,
             delay_between_requests: int = 0,
             sleep_echo: bool = False,
@@ -165,8 +164,8 @@ class Client:
         tx_params = {
             'chainId': self.network.chain_id,
             'nonce': await self.nonce(),
-            'from': AsyncWeb3.to_checksum_address(from_),
-            'to': AsyncWeb3.to_checksum_address(to),
+            'from': self.w3.to_checksum_address(from_),
+            'to': self.w3.to_checksum_address(to),
         }
         await sleep(
             self.delay_between_requests,
@@ -251,23 +250,27 @@ class Client:
             except Exception as e:
                 logger.error(f'{self.log_info} | {e}')
                 return False, e
-        logger.info(f'{self.log_info} | Transaction {tx_hash} sent')
+        logger.info(f'{self.log_info} | Transaction {self.network.explorer}/tx/{tx_hash} sent')
         return True, tx_hash
 
     async def verify_transaction(self, tx_hash: str, tx_name: str) -> bool:
+        explorer_link = f'{self.network.explorer}/tx/{tx_hash}'
         while True:
             try:
                 data = await self.w3.eth.wait_for_transaction_receipt(tx_hash)
                 if 'status' in data and data['status'] == 1:
-                    logger.info(f'{self.log_info} | Transaction {tx_name} ({tx_hash}) was successful')
+                    logger.info(
+                        f'{self.log_info} | Transaction {tx_name} ({explorer_link}) was successful'
+                    )
                     return True
                 else:
                     logger.error(
-                        f'{self.log_info} | Transaction {tx_name} ({tx_hash}) failed: {data["transactionHash"].hex()}'
+                        f'{self.log_info} | Transaction {tx_name} ({explorer_link}) failed: '
+                        f'{data["transactionHash"].hex()}'
                     )
                     return False
             except TimeExhausted as e:
-                logger.warning(f'{self.log_info} | Transaction {tx_name} ({tx_hash}) failed: {e}')
+                logger.warning(f'{self.log_info} | Transaction {tx_name} ({explorer_link}) failed: {e}')
                 if not self.do_no_matter_what:
                     return False
             except Exception as err:
@@ -278,13 +281,17 @@ class Client:
             self,
             to: str,
             name: str,
-            data: str = '0x1249c58b',
+            data: str = None,
             value: TokenAmount | int = TokenAmount(0),
             max_priority_fee_per_gas: Optional[int] = None,
             max_fee_per_gas: Optional[int] = None,
             increase_gas_limit: Optional[int] = None,
-            check_existing: bool = False
+            check_existing: bool = False,
+            full_balance: bool = False
     ) -> bool:
+        if full_balance:
+            # TODO
+            ...
         if isinstance(value, int):
             value = TokenAmount(value, wei=True)
         to = self.w3.to_checksum_address(to)

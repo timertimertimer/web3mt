@@ -17,7 +17,8 @@ python-okx = "^0.2.8"
 loguru = "^0.7.2"
 curl-cffi = "^0.6.2"
 better-proxy = "^1.1.5"
-aptos-sdk = "0.7.1"
+aptos-sdk = "^0.7.1"
+aioimaplib = "^1.0.1"
 
 [tool.poetry.group.dev.dependencies]
 python-dotenv = "^1.0.1"

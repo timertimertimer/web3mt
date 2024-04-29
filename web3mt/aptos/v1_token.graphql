@@ -1,4 +1,4 @@
-query Current_token_ownerships($owner_address: String, $token_data_id_hash: String) {
+query CurrentTokens($owner_address: String, $token_data_id_hash: String) {
     current_token_ownerships(
         where: {
             owner_address: {
@@ -8,7 +8,8 @@ query Current_token_ownerships($owner_address: String, $token_data_id_hash: Stri
                 token_data_id_hash: {
                     _eq: $token_data_id_hash
                 }
-            }
+            },
+            amount: {_gt: "0"}
         }
     ) {
         amount
