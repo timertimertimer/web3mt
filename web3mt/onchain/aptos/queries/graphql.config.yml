@@ -1,0 +1,2 @@
+schema: https://api.mainnet.aptoslabs.com/v1/graphql
+documents: '**/*.graphql'

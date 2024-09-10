@@ -1,5 +1,9 @@
+from typing import TYPE_CHECKING
+
 from aioimaplib.aioimaplib import IMAP4_SSL
-from web3db import Profile, Email
+
+if TYPE_CHECKING:
+    from web3db import Email
 
 IMAP_SERVERS = {
     'outlook.com': 'imap-mail.outlook.com',
@@ -10,7 +14,7 @@ IMAP_SERVERS = {
 
 
 class IMAPClient(IMAP4_SSL):
-    def __init__(self, profile: Profile, email: Email):
+    def __init__(self, email: 'Email'):
         self.email = email
         super().__init__(IMAP_SERVERS[email.login.split('@')[-1]])
 

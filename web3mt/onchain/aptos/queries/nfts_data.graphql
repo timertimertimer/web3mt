@@ -1,0 +1,22 @@
+query nfts_data(
+    $owner_address: String,
+    $offset: Int,
+    $limit: Int
+) {
+    current_token_ownerships_v2(
+        where: {amount: {_gt: 0}, owner_address: {_eq: $owner_address}}
+        offset: $offset
+        limit: $limit
+    ) {
+        storage_id
+        amount
+        current_token_data {
+            token_name
+            description
+            token_data_id
+            collection_id
+            token_uri
+            token_standard
+        }
+    }
+}

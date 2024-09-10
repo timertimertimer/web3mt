@@ -1,12 +1,12 @@
 import asyncio
 import random
 
-from .logger import logger
+from web3mt.utils import my_logger
+from ..consts import DEV
 
 
-async def sleep(a: float, b: float = None, profile_id: int = None, echo: bool = True) -> None:
+async def sleep(a: float, b: float = None, log_info: str = 'Main', echo: bool = DEV) -> None:
     delay = random.uniform(a, b) if b else a
-
-    if echo:
-        logger.info(f"{f'{profile_id} | ' if profile_id else ''}💤 Sleeping for {delay} s.")
+    if echo and delay:
+        my_logger.info(f"{log_info} | 💤 Sleeping for {delay} s.")
     await asyncio.sleep(delay)
