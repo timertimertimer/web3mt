@@ -1,4 +1,4 @@
-from web3db import Profile
+from web3db import LocalProfile
 from web3db.utils import decrypt
 from aptos_sdk.account import Account
 from aptos_sdk.async_client import RestClient, ResourceNotFound
@@ -6,7 +6,7 @@ from pathlib import Path
 
 from web3mt.onchain.aptos.models import Token, NFT, TokenAmount
 from web3mt.consts import Web3mtENV
-from web3mt.utils import ProfileSession, logger, FileManager
+from web3mt.utils import ProfileSession, my_logger, FileManager
 from web3mt.utils.custom_sessions import SessionConfig
 
 
@@ -24,7 +24,7 @@ class Client(RestClient):
 
     def __init__(
             self,
-            profile: Profile = None,
+            profile: LocalProfile = None,
             encryption_password: str = Web3mtENV.PASSPHRASE,
             private: str = None,
             node_url: str = NODE_URL
@@ -44,18 +44,18 @@ class Client(RestClient):
         self.log_info = f'{f"{self.profile.id} | " if self.profile else ""}{str(self.account_.address())}'
 
     async def __aenter__(self):
-        logger.success(f'{self.log_info} | Started')
+        my_logger.success(f'{self.log_info} | Started')
         return self
 
     async def __aexit__(self, exc_type, exc_val, exc_tb):
-        logger.error(f'{self.log_info} | {exc_val}') if exc_type else logger.success(f'{self.log_info} | Tasks done')
+        my_logger.error(f'{self.log_info} | {exc_val}') if exc_type else my_logger.success(f'{self.log_info} | Tasks done')
         await self.session.close()
 
     async def balance(self, echo: bool = False):
         try:
             balance = TokenAmount(await self.account_balance(self.account_.address()), wei=True)
             if echo:
-                logger.info(f'{self.log_info} | Balance: {balance}')
+                my_logger.info(f'{self.log_info} | Balance: {balance}')
             return balance
         except ResourceNotFound:
             return TokenAmount()
@@ -66,7 +66,7 @@ class Client(RestClient):
         while True:
             try:
                 txn_hash = await self.submit_transaction(self.account_, payload)
-                logger.success(f'{self.log_info} | Sent transaction {txn_hash}')
+                my_logger.success(f'{self.log_info} | Sent transaction {txn_hash}')
                 return sequence
             except Exception as e:
                 if (
@@ -75,7 +75,7 @@ class Client(RestClient):
                 ):
                     sequence += 1
                     continue
-                logger.error(f'{self.log_info} | {e}')
+                my_logger.error(f'{self.log_info} | {e}')
                 return False
 
     async def verify_transaction(self, tx_hash: str, tx_name: str) -> bool:
@@ -83,15 +83,15 @@ class Client(RestClient):
             try:
                 data = await self.wait_for_transaction(tx_hash)
                 if 'status' in data and data['status'] == 1:
-                    logger.info(f'{self.log_info} | Transaction {tx_name} ({tx_hash}) was successful')
+                    my_logger.info(f'{self.log_info} | Transaction {tx_name} ({tx_hash}) was successful')
                     return True
                 else:
-                    logger.error(
+                    my_logger.error(
                         f'{self.log_info} | Transaction {tx_name} ({tx_hash}) failed: {data["transactionHash"].hex()}'
                     )
                     return False
             except Exception as err:
-                logger.warning(f'{self.log_info} | Transaction {tx_name} ({tx_hash}) failed: {err}')
+                my_logger.warning(f'{self.log_info} | Transaction {tx_name} ({tx_hash}) failed: {err}')
                 return False
 
     async def nfts_data(self, limit: int = None, offset: int = None) -> list[NFT]:

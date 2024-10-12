@@ -4,13 +4,13 @@ from decimal import Decimal
 from enum import Enum
 from pathlib import Path
 from typing import AsyncIterable
-from web3db import Profile
+from web3db import LocalProfile
 from web3mt.dex.models import DEX, PriceImpactException
 from web3mt.onchain.evm.client import Client
 from web3mt.onchain.evm.models import *
 from web3mt.local_db import DBHelper
 from web3mt.onchain.evm.models import Sepolia
-from web3mt.utils import FileManager, logger, CustomAsyncSession
+from web3mt.utils import FileManager, my_logger, CustomAsyncSession
 
 
 class Contracts:
@@ -77,10 +77,10 @@ class Uniswap(DEX):
             token_amount_out = await self.quote(token_amount_in, token_out, fee)
             try:
                 dex_slippage = await self.price_impact_defender(token_amount_in, token_amount_out)
-                logger.debug(f'{self.client.log_info} | Found pool with fee {fee.value}')
+                my_logger.debug(f'{self.client.log_info} | Found pool with fee {fee.value}')
                 break
             except PriceImpactException as e:
-                logger.warning(f'{self.client.log_info} | {e}')
+                my_logger.warning(f'{self.client.log_info} | {e}')
         else:
             raise KeyError(f'No pool found for {token_amount_in.token} and {token_out}')
         token_amount_out.wei = int(token_amount_out.wei * (1 - ((self.SLIPPAGE - dex_slippage) / 100)))
@@ -138,7 +138,7 @@ class Uniswap(DEX):
         ...
 
 
-async def start(profile: Profile):
+async def start(profile: LocalProfile):
     u = Uniswap(profile=profile)
     u.client.chain = Arbitrum
     WETH = Token(u.client.chain, address='0x82aF49447D8a07e3bd95BD0d56f35241523fBab1')
@@ -155,7 +155,7 @@ async def start(profile: Profile):
 
 async def main():
     db = DBHelper()
-    profile = await db.get_row_by_id(1, Profile)
+    profile = await db.get_row_by_id(1, LocalProfile)
     await start(profile)
 
 

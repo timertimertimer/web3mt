@@ -2,7 +2,8 @@ import asyncio
 from typing import Union
 from sqlalchemy import select
 from sqlalchemy.orm import joinedload
-from web3db import DBHelper as BaseDBHelper, Proxy, Profile
+from web3db import DBHelper as BaseDBHelper, Proxy
+from web3db.models import RemoteProfile as Profile
 from web3mt.consts import Web3mtENV
 from web3mt.utils import my_logger
 from web3mt.utils.webshare import Webshare
@@ -38,7 +39,7 @@ class DBHelper(BaseDBHelper):
 
 
 async def main():
-    db = DBHelper(Web3mtENV.LOCAL_CONNECTION_STRING)
+    db = DBHelper(Web3mtENV.REMOTE_CONNECTION_STRING)
     await db.update_shared_proxies()
 
 

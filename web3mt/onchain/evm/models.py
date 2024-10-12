@@ -13,7 +13,8 @@ if TYPE_CHECKING:
 
 __all__ = [
     'DefaultABIs', 'Token', 'TokenAmount', 'Chain', 'Contract',
-    'Ethereum', 'Arbitrum', 'Optimism', 'Polygon', 'BNB', 'Linea', 'zkSync', 'Scroll', 'Zora', 'Base', 'Metis', 'opBNB'
+    'Ethereum', 'Arbitrum', 'Optimism', 'Polygon', 'BNB', 'Linea', 'zkSync', 'Scroll', 'Zora', 'Base', 'Metis', 'opBNB',
+    'Avalanche'
 ]
 
 

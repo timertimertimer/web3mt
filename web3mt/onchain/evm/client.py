@@ -13,7 +13,7 @@ from eth_account import Account
 from eth_account.messages import encode_defunct
 from eth_account.signers.local import LocalAccount
 from eth_utils import to_checksum_address, from_wei
-from web3db import Profile
+from web3db import LocalProfile as Profile
 from web3db.utils import decrypt
 from web3mt.onchain.evm.models import *
 from web3mt.consts import Web3mtENV, DEV
@@ -414,7 +414,7 @@ class Client(BaseClient):
     ) -> tuple[bool, str | Exception | HexBytes] | Decimal:
         tx_params = await self.create_tx_params(
             to=to, data=data, value=value.wei, gas_limit=gas_limit, max_priority_fee_per_gas=max_priority_fee_per_gas,
-            max_fee_per_gas=max_fee_per_gas, use_full_balance=use_full_balance
+            max_fee_per_gas=max_fee_per_gas, use_full_balance=use_full_balance, **kwargs
         )
         if isinstance(tx_params, tuple) and not tx_params[0]:
             return tx_params
@@ -497,8 +497,9 @@ class Client(BaseClient):
             tx_params: TransactionParameters = None,
             **kwargs
     ) -> TransactionParameters | tuple[bool, str]:
+        nonce = kwargs.get('nonce', await self.nonce())
         tx_params = tx_params or TransactionParameters(
-            from_=self.account.address, to=to, nonce=await self.nonce(), data=data, value=value,
+            from_=self.account.address, to=to, nonce=nonce, data=data, value=value,
             gas_limit=gas_limit, max_priority_fee_per_gas=max_priority_fee_per_gas, max_fee_per_gas=max_fee_per_gas,
             chain=self.chain
         )

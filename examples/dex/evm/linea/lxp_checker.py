@@ -1,24 +1,45 @@
 import asyncio
 
-from web3mt.local_db import DBHelper, Profile
+from web3db import LocalProfile
+from web3mt.local_db import DBHelper
 from web3mt.onchain.evm.client import Client
-from web3mt.onchain.evm.models import Linea, Token
-from web3mt.utils import my_logger
+from web3mt.onchain.evm.models import Linea, Token, TokenAmount
+from web3mt.utils import my_logger, ProfileSession
 
 db = DBHelper()
 
 
-async def check_xp_linea():
+class Checker:
     lxp_contract_address = '0xd83af4fbD77f3AB65C3B1Dc4B38D7e67AEcf599A'
-    profiles = await db.get_all_from_table(Profile)
-    tasks = []
-    for profile in profiles:
-        client = Client(chain=Linea, profile=profile)
-        tasks.append(asyncio.create_task(
-            client.balance_of(token=Token(Linea, address=lxp_contract_address), echo=True, remove_zero_from_echo=True)
-        ))
-    result = await asyncio.gather(*tasks)
-    my_logger.success(f'Total - {sum([el.ether for el in result])}')
+    lxpl_farmers = [1, 99, 100, 102, 105, 107]
+
+    def __init__(self, profile: LocalProfile):
+        self.session = ProfileSession(
+            profile,
+        )
+        self.client = Client(profile, Linea)
+
+    async def get_lxp(self) -> TokenAmount:
+        return await self.client.balance_of(
+            token=Token(Linea, address=self.lxp_contract_address), echo=True, remove_zero_from_echo=True
+        )
+
+    async def get_lxpl(self) -> tuple[int, int, int]:
+        _, data = await self.session.get(
+            'https://kx58j6x5me.execute-api.us-east-1.amazonaws.com/linea/getUserPointsSearch',
+            params={'user': self.client.account.address.lower()}
+        )
+        data = data[0]
+        return data['rank_xp'], data['xp'], data['rp']
 
 
-asyncio.run(check_xp_linea())
+async def main():
+    profiles = await db.get_rows_by_id(Checker.lxpl_farmers, LocalProfile)
+    res = await asyncio.gather(*[Checker(profile).get_lxpl() for profile in profiles])
+    for profile, el in zip(profiles, res):
+        my_logger.info(f'{profile.id} | {profile.evm_address} (Linea) | Rank: {el[0]}, Points: {el[1]} LXPL, Referal points: {el[2]} LXPL')
+    my_logger.info(f'Total LXPL: {sum([el[1] for el in res])}')
+
+
+if __name__ == '__main__':
+    asyncio.run(main())

@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "web3mt"
-version = "0.0.4"
+version = "0.1.3"
 description = "Web3 multitool"
 authors = ["timertimertimer <timerkhan2002@gmail.com>"]
 repository = "https://github.com/timertimertimer/web3mt"
@@ -12,6 +12,7 @@ Source = "https://github.com/timertimertimer/web3mt"
 [tool.poetry.dependencies]
 python = "^3.11"
 web3 = "^7.1.0"
+web3db = "^1.0.5"
 loguru = "^0.7.2"
 curl-cffi = "^0.6.2"
 better-proxy = "^1.1.5"
@@ -19,7 +20,6 @@ aptos-sdk = "^0.8.6"
 aioimaplib = "^1.1.0"
 aiofiles = "^23.2.1"
 aiocsv = "^1.3.2"
-sqlalchemy = "^2.0.31"
 
 [tool.poetry.group.dev.dependencies]
 python-dotenv = "^1.0.1"

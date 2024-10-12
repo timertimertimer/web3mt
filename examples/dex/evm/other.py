@@ -1,6 +1,7 @@
 import asyncio
 from eth_account import Account
-from web3db import Profile
+from web3.exceptions import Web3RPCError
+from web3db import LocalProfile
 from config import *
 from web3mt.onchain.evm.client import Client, BaseClient
 from web3mt.onchain.evm.models import *
@@ -13,22 +14,26 @@ db = DBHelper(Web3mtENV.LOCAL_CONNECTION_STRING)
 main_chains = [Ethereum, Scroll, zkSync, Base, Zora, Optimism, Arbitrum]
 
 
-async def _get_balance(profile: Profile, chain: Chain, semaphore: asyncio.Semaphore) -> TokenAmount:
+async def _get_balance(profile: LocalProfile, chain: Chain, semaphore: asyncio.Semaphore) -> TokenAmount:
     async with semaphore:
         client = Client(chain=chain, profile=profile)
         return await client.balance_of()
 
 
-async def _get_balance_multicall(chain: Chain, profiles: list[Profile], echo: bool = False) -> TokenAmount:
+async def _get_balance_multicall(chain: Chain, profiles: list[LocalProfile], echo: bool = False) -> TokenAmount:
     client = BaseClient(chain=chain)
     total_by_chain = TokenAmount(0, token=chain.native_token)
-    batch_size = 30
+    batch_size = 10
     all_balances = []
     for i in range(0, len(profiles), batch_size):
         async with client.w3.batch_requests() as batch:
             for profile in profiles[i:i + batch_size]:
                 batch.add(client.w3.eth.get_balance(Account.from_key(profile.evm_private).address))
-            balances = await batch.async_execute()
+            try:
+                balances = await batch.async_execute()
+            except Web3RPCError as e:
+                my_logger.warning(f'{chain} | {e}')
+                balances = [0] * batch_size
         all_balances += balances
     for balance, profile in zip(all_balances, profiles):
         token_amount = TokenAmount(balance, wei=True, token=chain.native_token)
@@ -43,7 +48,7 @@ async def check_balance_batch_multicall(chains: list[Chain] = None):
     await Ethereum.native_token.update_price()
     my_logger.success(f'1 ETH = {Ethereum.native_token.price}$')
     chains = chains or [Ethereum, Scroll, zkSync, Base, Zora, Optimism, Arbitrum]
-    profiles = await db.get_all_from_table(Profile)
+    profiles = await db.get_all_from_table(LocalProfile)
     total = 0
     full_log = 'Natives on wallets:\n'
     totals_by_chains = await asyncio.gather(*[_get_balance_multicall(chain, profiles) for chain in chains])
@@ -64,7 +69,7 @@ async def check_balance_batch(chains: list[Chain] = None):
     await Ethereum.native_token.update_price()
     my_logger.success(f'1 ETH = {Ethereum.native_token.price}$')
     chains = chains or [Ethereum, Scroll, zkSync, Base, Zora, Optimism, Arbitrum]
-    profiles = await db.get_all_from_table(Profile)
+    profiles = await db.get_all_from_table(LocalProfile)
     semaphore = asyncio.Semaphore(8)
     total = 0
     full_log = 'Natives on wallets:\n'
@@ -92,7 +97,7 @@ async def have_balance(client: Client, ethers: float = 0, echo: bool = False) ->
     return False
 
 
-async def opbnb_bridge(profile: Profile, amount: float = 0.002):
+async def opbnb_bridge(profile: LocalProfile, amount: float = 0.002):
     if await have_balance(Client(chain=opBNB, profile=profile)):
         return
     client = Client(chain=BNB, profile=profile)
@@ -150,7 +155,7 @@ async def decode_raw_input():
     print(contract.decode_function_input(transaction_input))
 
 
-async def check_yogapetz_insights(profile: Profile):
+async def check_yogapetz_insights(profile: LocalProfile):
     client = Client(chain=opBNB, profile=profile)
     abi = abis['yogapets_insights']
     contract = client.w3.eth.contract(address='0x73A0469348BcD7AAF70D9E34BBFa794deF56081F', abi=abi)
@@ -162,7 +167,7 @@ async def check_yogapetz_insights(profile: Profile):
         )
 
 
-async def polymer_faucet(profile: Profile):
+async def polymer_faucet(profile: LocalProfile):
     client = Client(chain=OP_Sepolia, profile=profile)
     client.INCREASE_GWEI = 1.1
     while True:
@@ -177,7 +182,7 @@ async def polymer_faucet(profile: Profile):
         await sleep(130)
 
 
-async def check_eth_activated_profile(profile: Profile, log_only_acivated: bool = False) -> int | None:
+async def check_eth_activated_profile(profile: LocalProfile, log_only_acivated: bool = False) -> int | None:
     client = Client(profile=profile)
     nonce = await client.nonce()
     log = f'{client} | Nonce - {nonce}'
