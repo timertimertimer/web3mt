@@ -252,7 +252,7 @@ class BaseClient:
             batch.add(contract.functions.name())
             batch.add(contract.functions.symbol())
             token.decimals, token.name, token.symbol = await batch.async_execute()
-            return token
+        return token
 
     async def get_allowance(
             self, spender_contract: AsyncContract, token: Token, owner_address: str = None

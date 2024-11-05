@@ -4,7 +4,7 @@ from decimal import Decimal
 from functools import partialmethod
 
 from curl_cffi.requests import RequestsError
-from web3db import Profile
+from web3db import LocalProfile
 
 from web3mt.cex.models import User, Asset, Account
 from web3mt.consts import Web3mtENV
@@ -21,7 +21,7 @@ class CEX(ABC):
     NAME = ''
 
     def __init__(
-            self, profile: Profile = None,
+            self, profile: LocalProfile = None,
             config: SessionConfig = None
     ):
         config = config or SessionConfig()

@@ -19,9 +19,9 @@ class Checker:
         )
         self.client = Client(profile, Linea)
 
-    async def get_lxp(self) -> TokenAmount:
+    async def get_lxp(self, echo: bool = True) -> TokenAmount:
         return await self.client.balance_of(
-            token=Token(Linea, address=self.lxp_contract_address), echo=True, remove_zero_from_echo=True
+            token=Token(Linea, address=self.lxp_contract_address), echo=echo, remove_zero_from_echo=True
         )
 
     async def get_lxpl(self) -> tuple[int, int, int]:
@@ -34,6 +34,9 @@ class Checker:
 
 
 async def main():
+    profiles = await db.get_all_from_table(LocalProfile)
+    res = await asyncio.gather(*[Checker(profile).get_lxp() for profile in profiles])
+    my_logger.info(f'Total LXP: {sum(res)}')
     profiles = await db.get_rows_by_id(Checker.lxpl_farmers, LocalProfile)
     res = await asyncio.gather(*[Checker(profile).get_lxpl() for profile in profiles])
     for profile, el in zip(profiles, res):

@@ -1,7 +1,12 @@
+import time
+from typing import Any
+
+from aptos_sdk.authenticator import Authenticator, Ed25519Authenticator
+from aptos_sdk.transactions import SignedTransaction, RawTransaction, TransactionPayload, EntryFunction
 from web3db import LocalProfile
 from web3db.utils import decrypt
 from aptos_sdk.account import Account
-from aptos_sdk.async_client import RestClient, ResourceNotFound
+from aptos_sdk.async_client import RestClient, ResourceNotFound, ClientConfig
 from pathlib import Path
 
 from web3mt.onchain.aptos.models import Token, NFT, TokenAmount
@@ -48,8 +53,12 @@ class Client(RestClient):
         return self
 
     async def __aexit__(self, exc_type, exc_val, exc_tb):
-        my_logger.error(f'{self.log_info} | {exc_val}') if exc_type else my_logger.success(f'{self.log_info} | Tasks done')
+        my_logger.error(f'{self.log_info} | {exc_val}') if exc_type else my_logger.success(
+            f'{self.log_info} | Tasks done')
         await self.session.close()
+
+    def __str__(self):
+        return f'{self.log_info}'
 
     async def balance(self, echo: bool = False):
         try:
@@ -77,6 +86,36 @@ class Client(RestClient):
                     continue
                 my_logger.error(f'{self.log_info} | {e}')
                 return False
+
+    async def send_transaction(self, payload: EntryFunction, max_gas_amount: int = ClientConfig.max_gas_amount) -> str | None:
+        raw_transaction = RawTransaction(
+            sender=self.account_.address(),
+            sequence_number=await self.account_sequence_number(self.account_.address()),
+            payload=TransactionPayload(payload),
+            max_gas_amount=max_gas_amount,
+            gas_unit_price=self.client_config.gas_unit_price,
+            expiration_timestamps_secs=(int(time.time()) + self.client_config.expiration_ttl),
+            chain_id=await self.chain_id(),
+        )
+        signature = self.account_.sign(raw_transaction.keyed())
+        authenticator = Authenticator(
+            Ed25519Authenticator(self.account_.public_key(), signature)
+        )
+        signed_transaction = SignedTransaction(raw_transaction, authenticator)
+        while True:
+            try:
+                txn_hash = await self.submit_bcs_transaction(signed_transaction)
+                my_logger.success(f'{self.log_info} | Sent transaction {txn_hash}')
+                return txn_hash
+            except Exception as e:
+                if (
+                        "Transaction already in mempool with a different payload" in str(e)
+                        or "SEQUENCE_NUMBER_TOO_OLD" in str(e)
+                ):
+                    raw_transaction.sequence_number += 1
+                    continue
+                my_logger.error(f'{self.log_info} | {e}')
+                return
 
     async def verify_transaction(self, tx_hash: str, tx_name: str) -> bool:
         while True:
@@ -113,4 +152,3 @@ class Client(RestClient):
             TokenAmount(amount=token['amount'], wei=True, token=Token(**token['metadata']))
             for token in assets
         ]
-

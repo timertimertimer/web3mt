@@ -486,6 +486,8 @@ class TokenAmount:
         )
 
     def __eq__(self, other):
+        if other == 0:
+            return self.wei == 0
         from web3mt.cex.models import Asset
         if isinstance(other, Asset):
             return self.token == other.coin
@@ -500,11 +502,15 @@ class TokenAmount:
         return bool(self.wei)
 
     def __add__(self, other):
+        if other == 0:
+            return self
         if isinstance(other, TokenAmount) and self.token == other.token:
             return TokenAmount(self.wei + other.wei, True, self.token)
         raise TypeError(f'Cannot add {other} to {repr(self)}')
 
     def __radd__(self, other):
+        if other == 0:
+            return self
         if not isinstance(other, (TokenAmount, int)):
             raise TypeError(f'Cannot add {other} to {repr(self)}')
         if other == 0:
@@ -512,6 +518,8 @@ class TokenAmount:
         return self.__add__(other)
 
     def __sub__(self, other):
+        if other == 0:
+            return self
         if isinstance(other, TokenAmount) and self.token == other.token:
             return TokenAmount(self.wei - other.wei, True, self.token)
         raise TypeError(f'Cannot add {other} to {repr(self)}')
@@ -660,7 +668,7 @@ ARB_Sepolia = Chain(
 
 Optimism = Chain(
     name='Optimism',
-    rpc='https://rpc.ankr.com/optimism/',
+    rpc='https://optimism-rpc.publicnode.com',
     chain_id=10,
     explorer='https://optimistic.etherscan.io/',
     eip1559_tx=True

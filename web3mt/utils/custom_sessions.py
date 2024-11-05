@@ -21,9 +21,10 @@ class SessionConfig:
             log_info: str = 'Main',
             sleep_after_request: bool = DEV,
             sleep_range: tuple = (5, 10),
-            sleep_echo: bool = DEV,
+            sleep_echo: bool = False,
             requests_echo: bool = DEV,
-            retry_count: int = RETRY_COUNT
+            retry_count: int = RETRY_COUNT,
+            try_with_default_proxy: bool = False
     ):
         self.log_info = log_info
         self.sleep_after_request = sleep_after_request
@@ -31,6 +32,7 @@ class SessionConfig:
         self.sleep_echo = sleep_echo and sleep_after_request
         self.requests_echo = requests_echo
         self.retry_count = retry_count
+        self.try_with_default_proxy = try_with_default_proxy
 
     def __repr__(self):
         return f'SessionConfig(' + ", ".join([f'{key}={value}' for key, value in vars(self).items()]) + ')'
@@ -78,21 +80,25 @@ class CustomAsyncSession(AsyncSession):
             my_logger.success(f'{self.config.log_info} | Tasks done')
         await self.close()
 
+    def __str__(self):
+        return self.config.log_info
+
     def retry(func: Callable) -> Callable:
         async def wrapper(self, *args, **kwargs) -> Any:
-            method = args[0]
-            url = args[1]
+            method = kwargs.get('method') or args[0]
+            url = kwargs.get('url') or args[1]
             params = kwargs.get('params')
+            headers = kwargs.get('headers', {}) | self.DEFAULT_HEADERS
             params = '?' + '&'.join([f'{key}={value}' for key, value in params.items()]) if params else ''
             retry_delay = kwargs.pop('retry_delay', self.config.sleep_range)
             retry_count = kwargs.pop('retry_count', self.config.retry_count)
             if self.config.requests_echo:
-                my_logger.info(f'{self.config.log_info} | {method} {url.rstrip("/") + params}')
+                my_logger.debug(f'{self.config.log_info} | {method} {url.rstrip("/") + params}')
             data = None
             for i in range(retry_count):
                 try:
                     response = None
-                    response, data = await func(self, *args, **kwargs)
+                    response, data = await func(self, *args, headers=headers, **kwargs)
                     if not kwargs.get('follow_redirects'):
                         response.raise_for_status()
                     if self.config.sleep_after_request:
@@ -100,9 +106,12 @@ class CustomAsyncSession(AsyncSession):
                                     echo=self.config.sleep_echo)
                     return response, data
                 except RequestsError as e:
-                    s = f'{url.rstrip("/") + params} {e} {data or ""}'
+                    s = f'{url.rstrip("/") + params} {e}' + (f' {data}' if data else '') + '.'
                     if e.code in (28, 55, 56):
                         pass
+                    elif e.code == 7 and self.config.try_with_default_proxy:
+                        self.proxies['all'] = Web3mtENV.DEFAULT_PROXY
+                        s += ' Trying with default proxy'
                     elif not response or 600 >= response.status_code >= 400:
                         raise RequestsError(s)
                     my_logger.warning(f'{self.config.log_info} | {s}. Retrying {i + 1} after {retry_delay} seconds')
@@ -111,7 +120,7 @@ class CustomAsyncSession(AsyncSession):
             else:
                 error_message = f'Tried to retry {self.config.retry_count} times'
                 if self.config.requests_echo:
-                    my_logger.info(f'{self.config.log_info} | {error_message}')
+                    my_logger.error(f'{self.config.log_info} | {error_message}')
                 raise RequestsError(error_message)
 
         return wrapper
@@ -124,16 +133,23 @@ class CustomAsyncSession(AsyncSession):
         self.headers
         ...
 
-    async def check_proxy(self):
+    async def check_proxy(self) -> str | None:
         try:
             _, ip = await self.get('https://icanhazip.com')
-            if ip.strip() not in self.proxies['all']:
-                raise RequestsError(f'Proxy {self.proxies["all"]} is not working')
-            my_logger.info(f'{self.config.log_info} | Proxy {self.proxies["all"]} is valid')
-            return True
+            ip = ip.strip()
+            my_logger.debug(f'{self.config.log_info} | Proxy {ip} is valid')
+            return ip
         except RequestsError:
             my_logger.warning(f'{self.config.log_info} | Proxy {self.proxies["all"]} is not working')
-            return False
+
+    async def get_proxy_location(self, host: str = None, proxy: str = Web3mtENV.DEFAULT_PROXY) -> tuple[str, str]:
+        host = host or Proxy.from_str(self.proxies['all'] or proxy).host
+        _, data = await self.get('https://api.iplocation.net/', params=dict(ip=host))
+        my_logger.debug(f'{self.config.log_info} | Proxy {host} in {data["country_code2"]}/{data["country_name"]}')
+        return data['country_name'], data['country_code2']
+
+    def update_proxy(self, proxy: str):
+        self.proxies['all'] = proxy
 
     @retry
     async def request(
@@ -188,11 +204,17 @@ class ProfileSession(CustomAsyncSession):
 
 
 async def check_proxies():
-    from web3mt.local_db import DBHelper, Profile
+    from web3mt.local_db import DBHelper
+    from web3db import LocalProfile
     db = DBHelper(Web3mtENV.LOCAL_CONNECTION_STRING)
-    profiles = await db.get_all_from_table(Profile)
+    profiles = await db.get_all_from_table(LocalProfile)
     await asyncio.gather(*[ProfileSession(profile).check_proxy() for profile in profiles])
 
 
+async def get_location(ip: str = Web3mtENV.DEFAULT_PROXY):
+    client = CustomAsyncSession()
+    await client.get_proxy_location(ip)
+
+
 if __name__ == '__main__':
-    asyncio.run(check_proxies())
+    asyncio.run(get_location())

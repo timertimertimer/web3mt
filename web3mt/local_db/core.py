@@ -5,8 +5,8 @@ from sqlalchemy.orm import joinedload
 from web3db import DBHelper as BaseDBHelper, Proxy
 from web3db.models import RemoteProfile as Profile
 from web3mt.consts import Web3mtENV
+from web3mt.offchain.webshare import Webshare
 from web3mt.utils import my_logger
-from web3mt.utils.webshare import Webshare
 
 ModelType = Union[type(Proxy), type(Profile)]
 
