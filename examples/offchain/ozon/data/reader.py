@@ -2,10 +2,9 @@ import json
 from pathlib import Path
 
 
-def parse_cookies(file_name: str):
-    file_path = Path(__file__).parent / file_name
-    if file_name.endswith('.json'):
-        cookies = json.load(open(file_path, 'r'))
+def parse_cookies(file_path: Path):
+    if file_path.suffix == '.json':
+        cookies = json.loads(file_path.read_text('utf-8'))
         if 'x-o3-app-name' not in cookies:
             cookies.append({'name': 'x-o3-app-name', 'value': 'ozonapp_ios'})
         if 'x-o3-app-version' not in cookies:

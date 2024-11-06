@@ -88,7 +88,6 @@ class CustomAsyncSession(AsyncSession):
             method = kwargs.get('method') or args[0]
             url = kwargs.get('url') or args[1]
             params = kwargs.get('params')
-            headers = kwargs.pop('headers', {}) | self.DEFAULT_HEADERS
             params = '?' + '&'.join([f'{key}={value}' for key, value in params.items()]) if params else ''
             retry_delay = kwargs.pop('retry_delay', self.config.sleep_range)
             retry_count = kwargs.pop('retry_count', self.config.retry_count)
@@ -98,7 +97,7 @@ class CustomAsyncSession(AsyncSession):
             for i in range(retry_count):
                 try:
                     response = None
-                    response, data = await func(self, *args, headers=headers, **kwargs)
+                    response, data = await func(self, *args, **kwargs)
                     if not kwargs.get('follow_redirects'):
                         response.raise_for_status()
                     if self.config.sleep_after_request:
@@ -107,6 +106,7 @@ class CustomAsyncSession(AsyncSession):
                         )
                     return response, data
                 except RequestsError as e:
+                    response = response or e.response
                     s = f'{url.rstrip("/") + params} {e}' + (f' {data}' if data else '') + '.'
                     if e.code in (28, 55, 56):
                         pass
