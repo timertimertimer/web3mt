@@ -57,7 +57,7 @@ class RouterNitro(Bridge):
             destination_chain_id_bytes: str,
             partner_id: int = 1
     ):
-        return self.client.w3.eth.contract(to_checksum_address(to), abi=self.ABI['router_asset_forwarder']).encodeABI(
+        return self.client.w3.eth.contract(to_checksum_address(to), abi=self.ABI['router_asset_forwarder']).encode_abi(
             'iDeposit',
             args=[
                 [

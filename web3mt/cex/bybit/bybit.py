@@ -7,9 +7,8 @@ from decimal import Decimal
 from functools import partialmethod
 from hashlib import sha256
 
-from web3db import LocalProfile
+from web3db import LocalProfile, DBHelper
 
-from web3mt.local_db.core import DBHelper
 from web3mt.cex.base import CEX
 from web3mt.cex.models import Asset, Account, User
 from web3mt.consts import DEV, Web3mtENV

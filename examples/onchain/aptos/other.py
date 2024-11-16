@@ -1,0 +1,29 @@
+import asyncio
+
+from web3db import LocalProfile, DBHelper
+
+from web3mt.consts import Web3mtENV
+from web3mt.onchain.aptos import Client
+from web3mt.onchain.aptos.models import Token, TokenAmount
+from web3mt.utils import my_logger
+
+db = DBHelper(Web3mtENV.LOCAL_CONNECTION_STRING)
+
+
+async def check_balance_batch() -> None:
+    await Token().update_price()
+    total: TokenAmount = sum(await asyncio.gather(*[
+        asyncio.create_task(Client(profile).balance(echo=True)) for profile in await db.get_all_from_table(LocalProfile)
+    ]))
+    my_logger.info(f'Total: {total}')
+
+
+async def withdraw_to_okx(profile: LocalProfile):
+    client = Client(profile=profile)
+    balance = await client.account_balance(client.account_.address())
+    await client.transfer(client.account_, profile.okx_aptos_address, int(balance * 0.8))
+    my_logger.info(f"{client} | Sent {TokenAmount(balance * 0.8, wei=True)} APT to {profile.okx_aptos_address}")
+
+
+if __name__ == '__main__':
+    asyncio.run(check_balance_batch())

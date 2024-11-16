@@ -1,4 +1,5 @@
 from abc import ABC
+from decimal import Decimal
 from pathlib import Path
 
 from web3mt.dex.models import DEX
@@ -55,7 +56,7 @@ class Bridge(DEX, ABC):
         pass
 
     def validate_bridge_info(self, bridge_info: BridgeInfo) -> BridgeInfo | None:
-        if bridge_info.bridge_fee.amount_in_usd > 1:
+        if bridge_info.bridge_fee.amount_in_usd > self.MAX_FEE_IN_USD:
             my_logger.warning(
                 f'{self.client.log_info} | Can\'t bridge with {bridge_info.name}. '
                 f'Bridge fee: {bridge_info.bridge_fee}'

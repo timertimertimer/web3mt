@@ -119,11 +119,13 @@ class Ozon(CustomAsyncSession):
         #         update_local_data = True
 
         await self.generate_cookies()
-        await self.current_location()
-        await self.get_user()
-        # await self.collect_pineapples()
-
-        await self.try_buy()
+        while True:
+            try:
+                await self.current_location()
+                await self.get_user()
+                await self.try_buy()
+            except Exception as e:
+                my_logger.warning(f'{self.config.log_info} | {e}')
 
     async def generate_cookies(self):
         timestamp = datetime.utcnow().isoformat(timespec='milliseconds') + 'Z'

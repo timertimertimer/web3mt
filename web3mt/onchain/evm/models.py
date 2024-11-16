@@ -413,7 +413,6 @@ class Token(Coin):
     def __eq__(self, other):
         if isinstance(other, Token):
             return (
-                    self.chain == other.chain and
                     self.symbol == other.symbol and
                     any((
                         self.address == other.address,
@@ -668,7 +667,7 @@ ARB_Sepolia = Chain(
 
 Optimism = Chain(
     name='Optimism',
-    rpc='https://optimism-rpc.publicnode.com',
+    rpc='https://op-pokt.nodies.app',
     chain_id=10,
     explorer='https://optimistic.etherscan.io/',
     eip1559_tx=True
@@ -777,7 +776,7 @@ Zora = Chain(
 
 Base = Chain(
     name='Base',
-    rpc='https://base.llamarpc.com',  # 'https://base-rpc.publicnode.com',
+    rpc='https://base-rpc.publicnode.com',
     chain_id=8453,
     explorer='https://basescan.org/',
     eip1559_tx=True

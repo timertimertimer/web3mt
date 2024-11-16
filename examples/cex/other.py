@@ -1,12 +1,12 @@
 import asyncio
 
+from web3db import DBHelper, LocalProfile
+
 from web3mt.cex.bybit.bybit import Bybit
 from web3mt.cex.okx.okx import OKX
 from web3mt.consts import Web3mtENV
-from web3mt.local_db import DBHelper
 from web3mt.onchain.evm.models import Ethereum
 from web3mt.utils import my_logger
-from web3db import Profile
 
 db = DBHelper(Web3mtENV.LOCAL_CONNECTION_STRING)
 
@@ -14,7 +14,7 @@ db = DBHelper(Web3mtENV.LOCAL_CONNECTION_STRING)
 async def get_total_balance():
     await Ethereum.native_token.update_price()
     my_logger.debug(f'1 ETH = {Ethereum.native_token.price}$')
-    profiles = await db.get_all_from_table(Profile)
+    profiles = await db.get_all_from_table(LocalProfile)
     funcs = []
     for profile in profiles:
         if profile.bybit_api_key:

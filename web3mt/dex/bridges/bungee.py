@@ -6,15 +6,16 @@ from web3mt.utils import my_logger
 
 class Bungee(Bridge):
     NAME = 'Bungee'
-    API_URL = 'https://refuel.socket.tech/'
+    REFUEL_API_URL = 'https://refuel.socket.tech'
+    BRIDGE_API_URL = 'https://api.socket.tech/v2'
 
     async def refuel(self, bridge_info: BridgeInfo, use_full_balance: bool = False) -> BridgeInfo | None:
         _, data = await self.session.get(
-            f'{self.API_URL}quote', params={
-                'fromChainId': bridge_info.token_amount_in.token.chain.chain_id,
-                'toChainId': bridge_info.token_out.chain.chain_id,
-                'amount': bridge_info.token_amount_in.wei
-            }
+            f'{self.REFUEL_API_URL}/quote', params=dict(
+                fromChainId=bridge_info.token_amount_in.token.chain.chain_id,
+                toChainId=bridge_info.token_out.chain.chain_id,
+                fromTokenAddress=bridge_info.token_amount_in.token.address,
+            )
         )
         if not data['success']:
             my_logger.warning(f'{self.client.log_info} | Skipping Bungee refuel. {data["result"]}')

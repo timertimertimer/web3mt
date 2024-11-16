@@ -5,17 +5,18 @@ from curl_cffi.requests import RequestsError
 from eth_abi import encode
 from eth_utils import to_checksum_address, to_wei, to_bytes, to_hex, keccak
 from hexbytes import HexBytes
-from web3db import Profile
 from string import whitespace, punctuation
 from examples.dex.evm.basehunt.db import BasehuntState, DBHelper as StateDBHelper
 from examples.dex.evm.evm_warmup import Warmup
+from web3db import DBHelper, LocalProfile
 from web3mt.cex import OKX
+from web3mt.consts import Web3mtENV
 from web3mt.dex.models import DEX
-from web3mt.local_db import DBHelper
 from web3mt.onchain.evm.client import Client
 from web3mt.onchain.evm.models import TokenAmount, Base, Arbitrum, Optimism, Token, Linea, Zora, zkSync
 from web3mt.utils import FileManager, sleep, my_logger
 from web3mt.utils.custom_sessions import SessionConfig, RETRY_COUNT, CustomAsyncSession
+from web3mt.utils.db import update_shared_proxies
 
 nfts = {
     '0x3b4B32a5c9A01763A0945A8a4a4269052DC3DE2F': '6UuHdstl9MRFd4cgFf15kk',
@@ -34,7 +35,7 @@ class Basehunt(DEX):
     NAME = 'Basehunt'
     API = 'https://basehunt.xyz/api'
 
-    def __init__(self, session: CustomAsyncSession = None, client: Client = None, profile: Profile = None):
+    def __init__(self, session: CustomAsyncSession = None, client: Client = None, profile: LocalProfile = None):
         super().__init__(session=session, client=client, profile=profile)
         self.session.config.sleep_after_request = True
         self.session.config.sleep_range = (5, 10)
@@ -347,7 +348,7 @@ def namehash(name):
     return node
 
 
-async def start(semaphore: asyncio.Semaphore, profile: Profile):
+async def start(semaphore: asyncio.Semaphore, profile: LocalProfile):
     async with semaphore:
         async with Basehunt(profile=profile) as bh:
             # await bh.claim_badges()
@@ -356,10 +357,10 @@ async def start(semaphore: asyncio.Semaphore, profile: Profile):
 
 async def main():
     global states
-    db = DBHelper(query_echo=False)
-    await db.update_shared_proxies()
+    db = DBHelper(url=Web3mtENV.LOCAL_CONNECTION_STRING, query_echo=False)
+    await update_shared_proxies(db)
     states = await state_db.get_all_from_table(BasehuntState)
-    profiles = await db.get_all_from_table(Profile)
+    profiles = await db.get_all_from_table(LocalProfile)
     # profiles = await db.get_rows_by_id([1], Profile)
     random.shuffle(profiles)
     semaphore = asyncio.Semaphore(20)

@@ -63,11 +63,11 @@ class Client(RestClient):
     async def balance(self, echo: bool = False):
         try:
             balance = TokenAmount(await self.account_balance(self.account_.address()), wei=True)
-            if echo:
-                my_logger.info(f'{self.log_info} | Balance: {balance}')
-            return balance
         except ResourceNotFound:
-            return TokenAmount()
+            balance = TokenAmount()
+        if echo:
+            my_logger.info(f'{self.log_info} | Balance: {balance}')
+        return balance
 
     async def send_transaction(self, payload: dict) -> int | bool:
         sender = self.account_.address()

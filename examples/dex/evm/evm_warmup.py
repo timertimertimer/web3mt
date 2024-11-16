@@ -2,16 +2,17 @@ import asyncio
 import random
 from decimal import Decimal
 
-from web3db import Profile
+from web3db import DBHelper
+from web3db import LocalProfile
 
-from web3mt.dex.bridges.base import BridgeInfo
+from web3mt.consts import Web3mtENV
+from web3mt.dex.bridges.base import BridgeInfo, Bridge
 from web3mt.dex.bridges.bungee import Bungee
 from web3mt.dex.bridges.relay import Relay
 from web3mt.dex.bridges.routernitro import RouterNitro
 from web3mt.dex.models import DEX
 from web3mt.onchain.evm.client import *
 from web3mt.onchain.evm.models import *
-from web3mt.local_db.core import DBHelper
 from web3mt.cex import OKX
 from web3mt.utils import my_logger, sleep, format_number, CustomAsyncSession
 from eth_utils import to_checksum_address
@@ -27,7 +28,7 @@ class Warmup(DEX):
         'Blur': '0x0000000000a39bb272e79075ade125fd351887ac'
     }
 
-    def __init__(self, session: CustomAsyncSession = None, client: Client = None, profile: Profile = None):
+    def __init__(self, session: CustomAsyncSession = None, client: Client = None, profile: LocalProfile = None):
         super().__init__(session=session, client=client, profile=profile)
         self.okx = OKX()
         self.total_fee = Decimal(0)
@@ -259,7 +260,7 @@ class Warmup(DEX):
         )
 
 
-async def start(profile: Profile) -> Decimal | None:
+async def start(profile: LocalProfile) -> Decimal | None:
     async with Warmup(profile=profile) as wu:
         try:
             return await wu.start_eth_warmup()
@@ -267,19 +268,24 @@ async def start(profile: Profile) -> Decimal | None:
             return wu.total_fee
 
 
-async def bridge(profile: Profile):
+async def bridge(profile: LocalProfile):
+    DEX.MAX_FEE_IN_USD = 1.5
     async with Warmup(profile=profile) as wu:
-        await wu.execute_bridge_with_chain_update(Optimism.native_token, Ethereum.native_token, True)
+        await wu.execute_bridge_with_chain_update(
+            token_amount_in=TokenAmount(0.005, token=Base.native_token),
+            token_out=Ethereum.native_token,
+            wait_for_arrival=True
+        )
 
 
-async def check_nonce(profile: Profile) -> Profile | None:
+async def check_nonce(profile: LocalProfile) -> LocalProfile | None:
     client = Client(profile=profile)
     nonce = await client.nonce()
     if nonce == 0:
         return profile
 
 
-async def get_profiles_without_nonce(profiles: list[Profile]) -> list[Profile]:
+async def get_profiles_without_nonce(profiles: list[LocalProfile]) -> list[LocalProfile]:
     tasks = []
     for profile in profiles:
         tasks.append(asyncio.create_task(check_nonce(profile)))
@@ -287,9 +293,9 @@ async def get_profiles_without_nonce(profiles: list[Profile]) -> list[Profile]:
 
 
 async def main():
-    db = DBHelper()
-    profiles: list[Profile] = await db.get_all_from_table(Profile)
-    fees = await asyncio.gather(*[asyncio.create_task(test(profile)) for profile in profiles[:3]])
+    db = DBHelper(Web3mtENV.LOCAL_CONNECTION_STRING)
+    profiles: list[LocalProfile] = await db.get_rows_by_id([108], LocalProfile)
+    fees = await asyncio.gather(*[asyncio.create_task(bridge(profile)) for profile in profiles])
     my_logger.success(f'Total fee - {format_number(sum([fee or 0 for fee in fees]))}$')
 
 

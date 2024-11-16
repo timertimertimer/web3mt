@@ -3,7 +3,7 @@ import random
 from abc import ABC
 from decimal import Decimal
 from eth_utils import to_checksum_address
-from web3db import Profile
+from web3db import LocalProfile
 
 from web3mt.models import Coin
 from web3mt.offchain.coingecko import CoinGecko
@@ -19,8 +19,9 @@ class PriceImpactException(Exception):
 class DEX(ABC):
     NAME = 'DEX'
     SLIPPAGE = Decimal('0.5')
+    MAX_FEE_IN_USD = Decimal(1)
 
-    def __init__(self, session: CustomAsyncSession = None, client: Client = None, profile: Profile = None):
+    def __init__(self, session: CustomAsyncSession = None, client: Client = None, profile: LocalProfile = None):
         self.session = session or (ProfileSession(profile) if profile else CustomAsyncSession())
         self.client = client or (Client(profile) if profile else BaseClient())
 

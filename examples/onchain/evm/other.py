@@ -2,13 +2,14 @@ import asyncio
 
 from eth_account import Account
 from web3.exceptions import Web3RPCError
-from web3db import LocalProfile
-from web3mt.local_db import DBHelper
+from web3db import LocalProfile, DBHelper
+
+from web3mt.consts import Web3mtENV
 from web3mt.onchain.evm.client import Client, BaseClient
 from web3mt.onchain.evm.models import *
 from web3mt.utils import my_logger
 
-db = DBHelper()
+db = DBHelper(Web3mtENV.LOCAL_CONNECTION_STRING)
 main_chains = [Ethereum, Scroll, zkSync, Base, Zora, Optimism, Arbitrum]
 
 
@@ -33,7 +34,7 @@ async def _get_balance_multicall(chain: Chain, profiles: list[LocalProfile], ech
                 my_logger.warning(f'{chain} | {e}')
                 balances = [0] * batch_size
             except TimeoutError as e:
-                pass
+                pass  # FIXME:
         all_balances += balances
     for balance, profile in zip(all_balances, profiles):
         token_amount = TokenAmount(balance, wei=True, token=chain.native_token)
@@ -96,12 +97,12 @@ async def have_balance(client: Client, ethers: float = 0, echo: bool = False) ->
     return False
 
 
-async def check_eth_activated_profile(profile: LocalProfile, log_only_acivated: bool = False) -> int | None:
+async def check_eth_activated_profile(profile: LocalProfile, log_only_activated: bool = False) -> int | None:
     client = Client(profile=profile)
     nonce = await client.nonce()
     log = f'{client} | Nonce - {nonce}'
     if nonce == 0:
-        if log_only_acivated:
+        if log_only_activated:
             return
         my_logger.warning(log)
     else:
