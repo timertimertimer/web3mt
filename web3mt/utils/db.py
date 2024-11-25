@@ -1,5 +1,8 @@
+import asyncio
+
 from web3db import DBHelper
 
+from web3mt.consts import Web3mtENV
 from web3mt.offchain.webshare import Webshare
 from web3mt.utils import my_logger
 
@@ -15,3 +18,7 @@ async def update_shared_proxies(db_helper: DBHelper):
             my_logger.info(f'{profile.id} | Changing proxy {profile.proxy.proxy_string} to {new_proxy}')
             profile.proxy.proxy_string = new_proxy
     await db_helper.add_record(profiles)
+
+
+if __name__ == '__main__':
+    asyncio.run(update_shared_proxies(DBHelper(Web3mtENV.REMOTE_CONNECTION_STRING)))

@@ -6,8 +6,7 @@ from curl_cffi.requests import AsyncSession, RequestsError, Response, BrowserTyp
 from better_proxy import Proxy
 
 if TYPE_CHECKING:
-    from web3db.models import Profile as RemoteProfile
-    from web3mt.local_db import Profile as LocalProfile
+    from web3db.models import RemoteProfile, LocalProfile
 from web3mt.consts import DEV, Web3mtENV
 from web3mt.utils import my_logger, sleep, set_windows_event_loop_policy
 
@@ -134,9 +133,9 @@ class CustomAsyncSession(AsyncSession):
         self.headers
         ...
 
-    async def check_proxy(self) -> str | None:
+    async def check_proxy(self, **request_kwargs) -> str | None:
         try:
-            _, ip = await self.get('https://icanhazip.com')
+            _, ip = await self.get('https://icanhazip.com', **request_kwargs)
             ip = ip.strip()
             my_logger.debug(f'{self.config.log_info} | Proxy {ip} is valid')
             return ip
