@@ -1,8 +1,8 @@
 import asyncio
 
-from web3db import Profile
+from web3db import LocalProfile, DBHelper
 
-from web3mt.local_db import DBHelper
+from web3mt.consts import Web3mtENV
 from web3mt.onchain.evm.client import Client
 from web3mt.onchain.evm.models import Base, TokenAmount
 from web3mt.utils import my_logger, ProfileSession
@@ -10,10 +10,11 @@ from web3mt.utils import my_logger, ProfileSession
 
 class Superform:
     API_URL = 'https://api.superform.xyz/'
+    PIGGY_API_URL = 'https://www.superform.xyz/api/proxy/token-distribution'
 
-    def __init__(self, profile: Profile):
+    def __init__(self, profile: LocalProfile):
         self.client = Client(chain=Base, profile=profile)
-        self.session = ProfileSession(profile, headers={'Sf-Api-Key': 'a1c6494d30851c65cdb8cb047fdd'})
+        self.session = ProfileSession(profile)
 
     async def __aenter__(self):
         if await self.session.check_proxy():
@@ -26,6 +27,7 @@ class Superform:
             my_logger.success(f'{self.client.log_info} | Tasks done')
 
     async def mint_superfrens(self):
+        self.session.headers.update({'Sf-Api-Key': 'a1c6494d30851c65cdb8cb047fdd'})
         tournaments_ids = [int(tournament['id']) for tournament in await self._get_tournaments()]
         tournaments_rewards = await asyncio.gather(*[
             self.session.get(self.API_URL + f'superrewards/rewards/{tournament_id}/{str(self.client.account.address)}')
@@ -49,18 +51,47 @@ class Superform:
             value=TokenAmount(data['value'], True, self.client.chain.native_token)
         )
 
+    async def _get_piggy(self) -> tuple[bool, int]:
+        while True:
+            _, data = await self.session.get(
+                f'{self.PIGGY_API_URL}/{self.client.account.address}', follow_redirects=True
+            )
+            if data.get('error'):
+                await asyncio.sleep(10)
+                my_logger.warning(f'{self.client.log_info} | {data}')
+                continue
+            if data.get('status'):
+                my_logger.info(f'{self.client.log_info} | {data}')
+                return True, 0
+            break
+        claimed = data.get('rewards_claimed')
+        total_tokens = data['superrewards_stats']['total_tokens']
+        my_logger.success(f'{self.client.log_info} | {total_tokens} $PIGGY. Claimed: {claimed}')
+        return claimed, total_tokens
 
-async def start(profile: Profile):
+    async def claim_piggy(self) -> int:
+        claimed, total = await self._get_piggy()
+        if not claimed:
+            _, data = await self.session.get(
+                f'{self.PIGGY_API_URL}/claim/{self.client.account.address}', follow_redirects=True
+            )
+            await self.client.tx(data['to'], 'Claim $PIGGY', data['transactionData'])
+        return total
+
+
+async def start(profile: LocalProfile):
     async with Superform(profile) as sf:
         if not sf:
             return
-        await sf.mint_superfrens()
+        # await sf.mint_superfrens()
+        return await sf.claim_piggy()
 
 
 async def main():
-    db = DBHelper()
-    profiles: list[Profile] = await db.get_all_from_table(Profile)
-    await asyncio.gather(*[asyncio.create_task(start(profile)) for profile in profiles])
+    db = DBHelper(Web3mtENV.LOCAL_CONNECTION_STRING)
+    profiles: list[LocalProfile] = await db.get_all_from_table(LocalProfile)
+    total = await asyncio.gather(*[asyncio.create_task(start(profile)) for profile in profiles])
+    my_logger.info(f'Total $PIGGY: {sum(total)}')
 
 
 if __name__ == '__main__':
