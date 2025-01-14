@@ -6,7 +6,7 @@ from curl_cffi.requests import AsyncSession, RequestsError, Response, BrowserTyp
 from better_proxy import Proxy
 
 if TYPE_CHECKING:
-    from web3db.models import RemoteProfile, LocalProfile
+    from web3db.models import Profile
 from web3mt.consts import DEV, Web3mtENV
 from web3mt.utils import my_logger, sleep, set_windows_event_loop_policy
 
@@ -39,23 +39,23 @@ class SessionConfig:
 
 class CustomAsyncSession(AsyncSession):
     DEFAULT_HEADERS = {
-        "accept": "*/*",
-        "accept-language": "en-US,en",
-        "user-agent": 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) '
-                      'Chrome/126.0.0.0 Safari/537.36',
-        "sec-ch-ua": '"Not_A Brand";v="8", "Chromium";v="126", "Google Chrome";v="126"',
-        "sec-ch-ua-platform": '"Windows"',
-        "sec-ch-ua-mobile": "?0",
-        "sec-fetch-dest": "empty",
-        "sec-fetch-mode": "cors",
-        "sec-fetch-site": "same-origin",
-        "connection": "keep-alive",
+        "Accept": "*/*",
+        "Accept-Language": "en-US,en",
+        "Connection": "keep-alive",
+        "Sec-Ch-Ua": '"Not_A Brand";v="8", "Chromium";v="126", "Google Chrome";v="126"',
+        "Sec-Ch-Ua-Platform": '"Windows"',
+        "Sec-Ch-Ua-Mobile": "?0",
+        "Sec-Fetch-Dest": "empty",
+        "Sec-Fetch-Mode": "cors",
+        "Sec-Fetch-Site": "same-origin",
+        "User-Agent": 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) '
+                      'Chrome/131.0.0.0 Safari/537.36',
     }
 
     def __init__(
             self,
-            proxy: str = Web3mtENV.DEFAULT_PROXY,
-            config: SessionConfig = None,
+            proxy: str | None = Web3mtENV.DEFAULT_PROXY,
+            config: SessionConfig | None = None,
             **kwargs
     ) -> None:
         self.config = config or SessionConfig()
@@ -133,14 +133,16 @@ class CustomAsyncSession(AsyncSession):
         self.headers
         ...
 
-    async def check_proxy(self, **request_kwargs) -> str | None:
+    async def check_proxy(self, echo: bool = True, **request_kwargs) -> str | None:
         try:
             _, ip = await self.get('https://icanhazip.com', **request_kwargs)
             ip = ip.strip()
-            my_logger.debug(f'{self.config.log_info} | Proxy {ip} is valid')
+            if echo:
+                my_logger.debug(f'{self.config.log_info} | Proxy {ip} is valid')
             return ip
         except RequestsError:
-            my_logger.warning(f'{self.config.log_info} | Proxy {self.proxies["all"]} is not working')
+            if echo:
+                my_logger.warning(f'{self.config.log_info} | Proxy {self.proxies["all"]} is not working')
 
     async def get_proxy_location(self, host: str = None, proxy: str = Web3mtENV.DEFAULT_PROXY) -> tuple[str, str]:
         host = host or Proxy.from_str(self.proxies['all'] or proxy).host
@@ -195,7 +197,7 @@ class CustomAsyncSession(AsyncSession):
 
 class ProfileSession(CustomAsyncSession):
     def __init__(
-            self, profile: Union['RemoteProfile', 'LocalProfile'], config: SessionConfig = None, **kwargs
+            self, profile: Profile, config: SessionConfig = None, **kwargs
     ) -> None:
         config = config or SessionConfig()
         config.log_info = str(profile.id)
@@ -204,10 +206,9 @@ class ProfileSession(CustomAsyncSession):
 
 
 async def check_proxies():
-    from web3mt.local_db import DBHelper
-    from web3db import LocalProfile
+    from web3db import Profile, DBHelper
     db = DBHelper(Web3mtENV.LOCAL_CONNECTION_STRING)
-    profiles = await db.get_all_from_table(LocalProfile)
+    profiles = await db.get_all_from_table(Profile)
     await asyncio.gather(*[ProfileSession(profile).check_proxy() for profile in profiles])
 
 
@@ -217,4 +218,6 @@ async def get_location(ip: str = Web3mtENV.DEFAULT_PROXY):
 
 
 if __name__ == '__main__':
-    asyncio.run(get_location())
+    session = CustomAsyncSession('http://5LaUaSN2:mPghNZ7w@194.58.58.122:63376')
+    # asyncio.run(session.check_proxy())
+    asyncio.run(session.get_proxy_location())

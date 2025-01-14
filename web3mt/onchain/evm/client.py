@@ -13,7 +13,7 @@ from eth_account import Account
 from eth_account.messages import encode_defunct
 from eth_account.signers.local import LocalAccount
 from eth_utils import to_checksum_address, from_wei
-from web3db import LocalProfile as Profile
+from web3db import Profile
 from web3db.utils import decrypt
 from web3mt.onchain.evm.models import *
 from web3mt.consts import Web3mtENV, DEV
@@ -30,16 +30,16 @@ class TransactionParameters:
 
     def __init__(
             self,
-            to: str = Web3mtENV.DEFAULT_EVM_ADDRESS,
-            from_: str = Web3mtENV.DEFAULT_EVM_ADDRESS,
-            nonce: int = None,
-            data: str = None,
+            to: str | None = Web3mtENV.DEFAULT_EVM_ADDRESS,
+            from_: str | None = Web3mtENV.DEFAULT_EVM_ADDRESS,
+            nonce: int | None = None,
+            data: str | None = None,
             value: TokenAmount | int = TokenAmount(0),
-            gas_limit: int = None,
-            max_priority_fee_per_gas: int = None,
-            max_fee_per_gas: int = None,
-            gas_price: int = None,
-            chain: Chain = None
+            gas_limit: int | None = None,
+            max_priority_fee_per_gas: int | None = None,
+            max_fee_per_gas: int | None = None,
+            gas_price: int | None = None,
+            chain: Chain | None = None
     ):
         self.from_ = to_checksum_address(from_)
         self.to = to_checksum_address(to)
@@ -233,10 +233,11 @@ class BaseClient:
             AsyncHTTPProvider(self._chain.rpc, request_kwargs={'timeout': 5, 'proxy': self._proxy}),
             modules={'eth': (AsyncEth,), 'net': (AsyncNet,)},
             middleware=[
-                ExtraDataToPOAMiddleware, AttributeDictMiddleware, ENSNameToAddressMiddleware,
+                AttributeDictMiddleware, ENSNameToAddressMiddleware,
                 ValidationMiddleware, SleepAfterRequestMiddleware
             ]
         )
+        self.w3.middleware_onion.inject(ExtraDataToPOAMiddleware, layer=0)
 
     async def nonce(self, owner_address: str) -> int:
         return await self.w3.eth.get_transaction_count(owner_address)
@@ -339,9 +340,7 @@ class Client(BaseClient):
         self.profile = profile
         self._encryption_password = encryption_password
         super().__init__(
-            Account.from_key(
-                decrypt(self.profile.evm_private, self._encryption_password)
-            )
+            Account.from_key(decrypt(self.profile.evm_private, self._encryption_password))
             if self.profile.evm_private.startswith('-----BEGIN PGP MESSAGE-----')
             else Account.from_key(self.profile.evm_private),
             chain,
@@ -413,7 +412,7 @@ class Client(BaseClient):
             **kwargs
     ) -> tuple[bool, str | Exception | HexBytes] | Decimal:
         tx_params = await self.create_tx_params(
-            to=to, data=data, value=value.wei, gas_limit=gas_limit, max_priority_fee_per_gas=max_priority_fee_per_gas,
+            to=to, data=data, value=value, gas_limit=gas_limit, max_priority_fee_per_gas=max_priority_fee_per_gas,
             max_fee_per_gas=max_fee_per_gas, use_full_balance=use_full_balance, **kwargs
         )
         if isinstance(tx_params, tuple) and not tx_params[0]:
@@ -466,24 +465,24 @@ class Client(BaseClient):
     async def transfer_token(
             self,
             to: str,
+            name: str,
             amount: TokenAmount,
-            contract: AsyncContract = None,
-            token_address: str = None,
+            use_full_balance: bool = False,
+            **kwargs
     ) -> tuple[bool, Exception | HexBytes | str]:
-        if not contract:
-            contract = self.w3.eth.contract(to_checksum_address(token_address), abi=DefaultABIs.token)
-        balance = await self.balance_of(contract=contract)
-        if balance.wei >= amount.wei > 0:
-            return await self._send_transaction(
-                TransactionParameters(
-                    to=contract.address,
-                    data=contract.encode_abi('transfer', args=[to_checksum_address(to), amount.wei])
-                )
-            )
-        else:
-            my_logger.warning(
-                f'{self.log_info} | Amount is too high. Balance - {balance.ether}, amount - {amount.ether}')
+        to = to_checksum_address(to)
+        balance = await self.balance_of(token=amount.token)
+        if use_full_balance:
+            amount = balance
+        if balance.wei < amount.wei:
+            my_logger.warning(f'{self.log_info} | Balance - {balance} < amount - {amount}')
             return False, ''
+        contract = self.w3.eth.contract(amount.token.address, abi=DefaultABIs.token)
+        return await self.tx(
+            contract.address, name or f'Transfer {amount} to {to}',
+            data=contract.encode_abi('transfer', args=[to, amount.wei]),
+            **kwargs
+        )
 
     async def create_tx_params(
             self,
@@ -520,8 +519,8 @@ class Client(BaseClient):
                 tx_params.max_fee_per_gas = base_fee_per_gas + tx_params.max_priority_fee_per_gas
         else:
             tx_params.gas_price = await self.w3.eth.gas_price
-        if use_full_balance:
-            tx_params.value = await self.balance_of() - tx_params.fee
+        if value.token == self.chain.native_token and use_full_balance:
+            tx_params.value = await self.balance_of() - tx_params.fee - TokenAmount(0.0001, token=self.chain.native_token)
         return tx_params
 
     async def _send_transaction(self, tx_params: TransactionParameters) -> tuple[bool, Exception | HexBytes | str]:

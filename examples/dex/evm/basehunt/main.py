@@ -8,7 +8,7 @@ from hexbytes import HexBytes
 from string import whitespace, punctuation
 from examples.dex.evm.basehunt.db import BasehuntState, DBHelper as StateDBHelper
 from examples.dex.evm.evm_warmup import Warmup
-from web3db import DBHelper, LocalProfile
+from web3db import DBHelper, Profile
 from web3mt.cex import OKX
 from web3mt.consts import Web3mtENV
 from web3mt.dex.models import DEX
@@ -35,7 +35,7 @@ class Basehunt(DEX):
     NAME = 'Basehunt'
     API = 'https://basehunt.xyz/api'
 
-    def __init__(self, session: CustomAsyncSession = None, client: Client = None, profile: LocalProfile = None):
+    def __init__(self, session: CustomAsyncSession = None, client: Client = None, profile: Profile = None):
         super().__init__(session=session, client=client, profile=profile)
         self.session.config.sleep_after_request = True
         self.session.config.sleep_range = (5, 10)
@@ -348,7 +348,7 @@ def namehash(name):
     return node
 
 
-async def start(semaphore: asyncio.Semaphore, profile: LocalProfile):
+async def start(semaphore: asyncio.Semaphore, profile: Profile):
     async with semaphore:
         async with Basehunt(profile=profile) as bh:
             # await bh.claim_badges()
@@ -360,7 +360,7 @@ async def main():
     db = DBHelper(url=Web3mtENV.LOCAL_CONNECTION_STRING, query_echo=False)
     await update_shared_proxies(db)
     states = await state_db.get_all_from_table(BasehuntState)
-    profiles = await db.get_all_from_table(LocalProfile)
+    profiles = await db.get_all_from_table(Profile)
     # profiles = await db.get_rows_by_id([1], Profile)
     random.shuffle(profiles)
     semaphore = asyncio.Semaphore(20)

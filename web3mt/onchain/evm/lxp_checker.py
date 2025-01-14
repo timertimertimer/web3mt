@@ -1,6 +1,6 @@
 import asyncio
 
-from web3db import LocalProfile, DBHelper
+from web3db import Profile, DBHelper
 
 from web3mt.consts import Web3mtENV
 from web3mt.onchain.evm.client import Client
@@ -14,7 +14,7 @@ class Checker:
     lxp_contract_address = '0xd83af4fbD77f3AB65C3B1Dc4B38D7e67AEcf599A'
     lxpl_farmers = [1, 99, 100, 102, 105, 107]
 
-    def __init__(self, profile: LocalProfile):
+    def __init__(self, profile: Profile):
         self.session = ProfileSession(profile)
         self.client = Client(profile, Linea)
 
@@ -34,7 +34,7 @@ class Checker:
         return data['rank_xp'], data['xp'], data['rp']
 
 
-async def change_proxy(profile: LocalProfile):
+async def change_proxy(profile: Profile):
     checker = Checker(profile)
     if not await checker.session.check_proxy(retry_count=0):
         checker.session.proxies['all'] = Web3mtENV.DEFAULT_PROXY
@@ -47,7 +47,7 @@ async def main():
     checkers = await asyncio.gather(*[change_proxy(profile) for profile in profiles])
     res = await asyncio.gather(*[checker.get_lxp() for checker in checkers])
     my_logger.info(f'Total LXP: {sum(res)}')
-    profiles = await db.get_rows_by_id(Checker.lxpl_farmers, LocalProfile)
+    profiles = await db.get_rows_by_id(Checker.lxpl_farmers, Profile)
     res = await asyncio.gather(*[checker.get_lxpl() for checker in checkers])
     ans = 0
     for profile, el in zip(profiles, res):

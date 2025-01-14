@@ -3,7 +3,7 @@ import random
 from decimal import Decimal
 
 from web3db import DBHelper
-from web3db import LocalProfile
+from web3db import Profile
 
 from web3mt.consts import Web3mtENV
 from web3mt.dex.bridges.base import BridgeInfo, Bridge
@@ -28,7 +28,7 @@ class Warmup(DEX):
         'Blur': '0x0000000000a39bb272e79075ade125fd351887ac'
     }
 
-    def __init__(self, session: CustomAsyncSession = None, client: Client = None, profile: LocalProfile = None):
+    def __init__(self, session: CustomAsyncSession = None, client: Client = None, profile: Profile = None):
         super().__init__(session=session, client=client, profile=profile)
         self.okx = OKX()
         self.total_fee = Decimal(0)
@@ -260,7 +260,7 @@ class Warmup(DEX):
         )
 
 
-async def start(profile: LocalProfile) -> Decimal | None:
+async def start(profile: Profile) -> Decimal | None:
     async with Warmup(profile=profile) as wu:
         try:
             return await wu.start_eth_warmup()
@@ -268,7 +268,7 @@ async def start(profile: LocalProfile) -> Decimal | None:
             return wu.total_fee
 
 
-async def bridge(profile: LocalProfile):
+async def bridge(profile: Profile):
     DEX.MAX_FEE_IN_USD = 1.5
     async with Warmup(profile=profile) as wu:
         await wu.execute_bridge_with_chain_update(
@@ -278,14 +278,14 @@ async def bridge(profile: LocalProfile):
         )
 
 
-async def check_nonce(profile: LocalProfile) -> LocalProfile | None:
+async def check_nonce(profile: Profile) -> Profile | None:
     client = Client(profile=profile)
     nonce = await client.nonce()
     if nonce == 0:
         return profile
 
 
-async def get_profiles_without_nonce(profiles: list[LocalProfile]) -> list[LocalProfile]:
+async def get_profiles_without_nonce(profiles: list[Profile]) -> list[Profile]:
     tasks = []
     for profile in profiles:
         tasks.append(asyncio.create_task(check_nonce(profile)))
@@ -294,7 +294,7 @@ async def get_profiles_without_nonce(profiles: list[LocalProfile]) -> list[Local
 
 async def main():
     db = DBHelper(Web3mtENV.LOCAL_CONNECTION_STRING)
-    profiles: list[LocalProfile] = await db.get_rows_by_id([108], LocalProfile)
+    profiles: list[Profile] = await db.get_rows_by_id([108], Profile)
     fees = await asyncio.gather(*[asyncio.create_task(bridge(profile)) for profile in profiles])
     my_logger.success(f'Total fee - {format_number(sum([fee or 0 for fee in fees]))}$')
 

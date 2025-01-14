@@ -7,6 +7,11 @@ from web3mt.offchain.webshare import Webshare
 from web3mt.utils import my_logger
 
 
+def create_db_instance(connection_string: str = Web3mtENV.LOCAL_CONNECTION_STRING):
+    db = DBHelper(connection_string)
+    return db
+
+
 async def update_shared_proxies(db_helper: DBHelper):
     ws_proxies = set(await Webshare().proxy_list())
     profiles = await db_helper.get_profiles_with_shared_proxies()

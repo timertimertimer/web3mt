@@ -1,19 +1,23 @@
-from web3db import LocalProfile
+import asyncio
+import random
+
+from eth_utils import to_checksum_address, to_wei
+from web3db import Profile, DBHelper
 
 from examples.dex.evm.config import abis
 from examples.onchain.evm.other import have_balance
 from web3mt.onchain.evm.client import Client
 from web3mt.onchain.evm.models import *
 from web3mt.consts import Web3mtENV
-from web3mt.onchain.evm.models import OP_Sepolia
-from web3mt.local_db import DBHelper
-from web3mt.utils import my_logger, sleep, FileManager
+from web3mt.onchain.evm.models import OP_Sepolia, Xterio
+from web3mt.utils import my_logger, sleep, FileManager, CustomAsyncSession, ProfileSession
+from web3mt.utils.custom_sessions import SessionConfig
 
 db = DBHelper(Web3mtENV.LOCAL_CONNECTION_STRING)
 main_chains = [Ethereum, Scroll, zkSync, Base, Zora, Optimism, Arbitrum]
 
 
-async def opbnb_bridge(profile: LocalProfile, amount: float = 0.002):
+async def opbnb_bridge(profile: Profile, amount: float = 0.002):
     if await have_balance(Client(chain=opBNB, profile=profile)):
         return
     client = Client(chain=BNB, profile=profile)
@@ -71,7 +75,7 @@ async def decode_raw_input():
     print(contract.decode_function_input(transaction_input))
 
 
-async def check_yogapetz_insights(profile: LocalProfile):
+async def check_yogapetz_insights(profile: Profile):
     client = Client(chain=opBNB, profile=profile)
     abi = abis['yogapets_insights']
     contract = client.w3.eth.contract(address='0x73A0469348BcD7AAF70D9E34BBFa794deF56081F', abi=abi)
@@ -83,7 +87,7 @@ async def check_yogapetz_insights(profile: LocalProfile):
         )
 
 
-async def polymer_faucet(profile: LocalProfile):
+async def polymer_faucet(profile: Profile):
     client = Client(chain=OP_Sepolia, profile=profile)
     client.INCREASE_GWEI = 1.1
     while True:
@@ -96,3 +100,36 @@ async def polymer_faucet(profile: LocalProfile):
             name='Polymer Faucet',
         )
         await sleep(130)
+
+
+async def bridge_to_xterio(profile: Profile):
+    if not await ProfileSession(profile, config=SessionConfig(sleep_after_request=False, retry_count=1)).check_proxy():
+        profile.proxy.proxy_string = Web3mtENV.DEFAULT_PROXY
+
+    bsc_client = Client(chain=BNB, profile=profile)
+    xterio_client = Client(chain=Xterio, profile=profile)
+    bsc_balance = await bsc_client.balance_of()
+    xterio_balance = await xterio_client.balance_of()
+    if (
+            bsc_balance > TokenAmount(0.001, token=BNB.native_token)
+            and xterio_balance < TokenAmount(0.0005, token=Xterio.native_token)
+    ):
+        contract = bsc_client.w3.eth.contract(
+            '0xC3671e7E875395314bBad175b2b7F0EF75DA5339', abi=abis['bridge_to_xterio']
+        )
+        amount = TokenAmount(0.0003, token=BNB.native_token)
+        await bsc_client.tx(
+            contract.address,
+            f'Bridge {amount} to Xterio',
+            contract.encode_abi('bridgeETHTo', args=[bsc_client.account.address, 200000, b'7375706572627269646765']),
+            amount
+        )
+
+
+async def main():
+    profiles = await db.get_all_from_table(Profile)
+    await asyncio.gather(*[bridge_to_xterio(profile) for profile in profiles])
+
+
+if __name__ == '__main__':
+    asyncio.run(main())

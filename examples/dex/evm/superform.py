@@ -1,6 +1,6 @@
 import asyncio
 
-from web3db import LocalProfile, DBHelper
+from web3db import Profile, DBHelper
 
 from web3mt.consts import Web3mtENV
 from web3mt.onchain.evm.client import Client
@@ -12,7 +12,7 @@ class Superform:
     API_URL = 'https://api.superform.xyz/'
     PIGGY_API_URL = 'https://www.superform.xyz/api/proxy/token-distribution'
 
-    def __init__(self, profile: LocalProfile):
+    def __init__(self, profile: Profile):
         self.client = Client(chain=Base, profile=profile)
         self.session = ProfileSession(profile)
 
@@ -79,7 +79,7 @@ class Superform:
         return total
 
 
-async def start(profile: LocalProfile):
+async def start(profile: Profile):
     async with Superform(profile) as sf:
         if not sf:
             return
@@ -89,7 +89,7 @@ async def start(profile: LocalProfile):
 
 async def main():
     db = DBHelper(Web3mtENV.LOCAL_CONNECTION_STRING)
-    profiles: list[LocalProfile] = await db.get_all_from_table(LocalProfile)
+    profiles: list[Profile] = await db.get_all_from_table(Profile)
     total = await asyncio.gather(*[asyncio.create_task(start(profile)) for profile in profiles])
     my_logger.info(f'Total $PIGGY: {sum(total)}')
 

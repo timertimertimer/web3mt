@@ -726,12 +726,20 @@ opBNB.native_token.symbol = 'BNB'
 
 BNB = Chain(
     name='BNB',
-    rpc='https://bsc.meowrpc.com',
+    rpc='https://binance.llamarpc.com',
     chain_id=56,
     explorer='https://bscscan.com/',
     eip1559_tx=True
 )
 BNB.native_token.symbol = 'BNB'
+Xterio = Chain(
+    name='Xterio',
+    rpc='https://xterio.alt.technology',
+    chain_id=2702128,
+    explorer='https://eth.xterscan.io',
+    eip1559_tx=True
+)
+Xterio.native_token.symbol = 'BNB'
 
 Linea = Chain(
     name='Linea',
@@ -808,6 +816,9 @@ Ronin = Chain(
     eip1559_tx=False
 )
 Ronin.native_token.symbol = 'RON'
+
+ARB_WETH = Token(Arbitrum, address='0x82aF49447D8a07e3bd95BD0d56f35241523fBab1')
+ARB_USDC = Token(Arbitrum, address='0xaf88d065e77c8cC2239327C5EDb3A432268e5831')
 
 if __name__ == '__main__':
     a = Token(chain=Optimism, address='0x4200000000000000000000000000000000000006')

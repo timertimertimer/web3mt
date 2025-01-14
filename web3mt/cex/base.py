@@ -4,7 +4,7 @@ from decimal import Decimal
 from functools import partialmethod
 
 from curl_cffi.requests import RequestsError
-from web3db import LocalProfile
+from web3db import Profile
 
 from web3mt.cex.models import User, Asset, Account
 from web3mt.consts import Web3mtENV
@@ -21,7 +21,7 @@ class CEX(ABC):
     NAME = ''
 
     def __init__(
-            self, profile: LocalProfile = None,
+            self, profile: Profile = None,
             config: SessionConfig = None
     ):
         config = config or SessionConfig()
@@ -95,7 +95,7 @@ class CEX(ABC):
             my_logger.info(user.trading_account)
         return total_balance
 
-    async def   collect_on_funding_master(self):
+    async def collect_on_funding_master(self):
         await self.transfer_from_sub_accounts_to_master()
 
         if not self.main_user.trading_account.assets:

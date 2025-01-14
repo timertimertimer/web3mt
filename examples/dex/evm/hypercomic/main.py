@@ -1,8 +1,9 @@
 import asyncio
-from web3mt.local_db import DBHelper, Profile
+
+from web3db import DBHelper, Profile
 from web3mt.onchain.evm.client import Client
-from web3mt.onchain.evm.models import zkSync, TokenAmount
-from web3mt.utils import FileManager, my_logger, CustomAsyncSession
+from web3mt.onchain.evm.models import TokenAmount, zkSync
+from web3mt.utils import CustomAsyncSession, FileManager, my_logger
 
 url = "https://play.hypercomic.io/Claim/actionZK/conditionsCheck2"
 db = DBHelper()

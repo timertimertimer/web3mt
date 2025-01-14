@@ -1462,5 +1462,30 @@
       "stateMutability": "view",
       "type": "function"
     }
+  ],
+  "bridge_to_xterio": [
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "_to",
+          "type": "address"
+        },
+        {
+          "internalType": "uint32",
+          "name": "_minGasLimit",
+          "type": "uint32"
+        },
+        {
+          "internalType": "bytes",
+          "name": "_extraData",
+          "type": "bytes"
+        }
+      ],
+      "name": "bridgeETHTo",
+      "outputs": [],
+      "stateMutability": "payable",
+      "type": "function"
+    }
   ]
 }

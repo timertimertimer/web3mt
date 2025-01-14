@@ -2,7 +2,7 @@ import os
 import asyncio
 
 from curl_cffi.requests import RequestsError
-from web3db import DBHelper, LocalProfile
+from web3db import DBHelper, Profile
 from dotenv import load_dotenv
 
 from web3mt.onchain.evm.client import Client
@@ -11,7 +11,7 @@ from web3mt.utils import ProfileSession, logger, sleep
 load_dotenv()
 
 
-async def register(profile: LocalProfile):
+async def register(profile: Profile):
     api = "https://sophon.xyz/api"
     headers = {"Origin": "https://sophon.xyz", "Referer": "https://sophon.xyz/"}
     client = Client(profile=profile)
@@ -36,7 +36,7 @@ async def register(profile: LocalProfile):
 
 async def main():
     db = DBHelper(os.getenv("CONNECTION_STRING"))
-    profiles: list[LocalProfile] = await db.get_all_from_table(LocalProfile)
+    profiles: list[Profile] = await db.get_all_from_table(Profile)
     for profile in profiles:
         if not await register(profile):
             await sleep(30, 60, echo=False)

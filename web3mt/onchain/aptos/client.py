@@ -3,7 +3,7 @@ from typing import Any
 
 from aptos_sdk.authenticator import Authenticator, Ed25519Authenticator
 from aptos_sdk.transactions import SignedTransaction, RawTransaction, TransactionPayload, EntryFunction
-from web3db import LocalProfile
+from web3db import Profile
 from web3db.utils import decrypt
 from aptos_sdk.account import Account
 from aptos_sdk.async_client import RestClient, ResourceNotFound, ClientConfig
@@ -29,7 +29,7 @@ class Client(RestClient):
 
     def __init__(
             self,
-            profile: LocalProfile = None,
+            profile: Profile = None,
             encryption_password: str = Web3mtENV.PASSPHRASE,
             private: str = None,
             node_url: str = NODE_URL

@@ -1,15 +1,8 @@
 import asyncio
-import random
-import time
-
 from aptos_sdk.account_address import AccountAddress
-from aptos_sdk.authenticator import Authenticator, Ed25519Authenticator
 from aptos_sdk.bcs import Serializer
-from aptos_sdk.transactions import RawTransaction, TransactionPayload, EntryFunction, TransactionArgument, \
-    SignedTransaction
-from web3db import LocalProfile
-
-from web3mt.local_db import DBHelper
+from aptos_sdk.transactions import EntryFunction, TransactionArgument
+from web3db import Profile, DBHelper
 from web3mt.onchain.aptos import Client
 from web3mt.onchain.aptos.models import TokenAmount
 from web3mt.utils import my_logger
@@ -25,7 +18,7 @@ async def is_minted(client: Client) -> bool:
     return False
 
 
-async def mint(profile: LocalProfile):
+async def mint(profile: Profile):
     client = Client(profile)
     client.session.config.try_with_default_proxy = True
     amount = 1
@@ -55,7 +48,7 @@ async def mint(profile: LocalProfile):
 
 async def main():
     db = DBHelper()
-    profiles = await db.get_all_from_table(LocalProfile)
+    profiles = await db.get_all_from_table(Profile)
     await asyncio.gather(*[mint(profile) for profile in profiles])
 
 

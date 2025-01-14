@@ -4,11 +4,10 @@ from decimal import Decimal
 from enum import Enum
 from pathlib import Path
 from typing import AsyncIterable
-from web3db import LocalProfile
+from web3db import Profile
 from web3mt.dex.models import DEX, PriceImpactException
 from web3mt.onchain.evm.client import Client
 from web3mt.onchain.evm.models import *
-from web3mt.local_db import DBHelper
 from web3mt.onchain.evm.models import Sepolia
 from web3mt.utils import FileManager, my_logger, CustomAsyncSession
 
@@ -136,28 +135,3 @@ class Uniswap(DEX):
 
     async def create_pool(self, token_in: Token, token_out: Token, fee: int = Fee.TIER_100):
         ...
-
-
-async def start(profile: LocalProfile):
-    u = Uniswap(profile=profile)
-    u.client.chain = Arbitrum
-    WETH = Token(u.client.chain, address='0x82aF49447D8a07e3bd95BD0d56f35241523fBab1')
-    TIAN = Token(u.client.chain, address='0xD56734d7f9979dD94FAE3d67C7e928234e71cD4C')
-    USDC = Token(u.client.chain, address='0xaf88d065e77c8cC2239327C5EDb3A432268e5831')
-    await WETH.get_token_info()
-    await USDC.get_token_info()
-    token_in = u.client.chain.native_token
-    token_out = TIAN
-    token_amount_in = TokenAmount(0.001, token=token_in)
-    # token_amount_in = await u.client.balance_of(token=token_in)
-    await u.swap(token_amount_in, token_out)
-
-
-async def main():
-    db = DBHelper()
-    profile = await db.get_row_by_id(1, LocalProfile)
-    await start(profile)
-
-
-if __name__ == '__main__':
-    asyncio.run(main())

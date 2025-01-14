@@ -7,7 +7,7 @@ from decimal import Decimal
 from functools import partialmethod
 from hashlib import sha256
 
-from web3db import LocalProfile, DBHelper
+from web3db import Profile, DBHelper
 
 from web3mt.cex.base import CEX
 from web3mt.cex.models import Asset, Account, User
@@ -63,14 +63,14 @@ class Bybit(CEX):
         params = kwargs.get('params', {})
         params = '&'.join([f'{key}={value}' for key, value in params.items()])
         prehash_string = (
-                timestamp + self.profile.bybit_api_key + str(recv_window) + str(params) + kwargs.get('data','')
+                timestamp + self.profile.bybit.api_key + str(recv_window) + str(params) + kwargs.get('data','')
         )
         signature = hmac.new(
-            self.profile.bybit_api_secret.encode('utf-8'), prehash_string.encode('utf-8'), sha256
+            self.profile.bybit.api_secret.encode('utf-8'), prehash_string.encode('utf-8'), sha256
         ).hexdigest()
         return {
             'Content-Type': 'application/json',
-            'X-BAPI-API-KEY': self.profile.bybit_api_key,
+            'X-BAPI-API-KEY': self.profile.bybit.api_key,
             'X-BAPI-SIGN': signature,
             'X-BAPI-TIMESTAMP': timestamp,
             'X-BAPI-RECV-WINDOW': str(recv_window)
@@ -91,7 +91,7 @@ class Bybit(CEX):
     async def get_trading_balance(self, user: User = None, coins: list[Asset | Coin | str] = None) -> list[Asset]:
         trading_account = user.trading_account or self.main_user.trading_account
         account_type = await self.get_uid_wallet_type(user)
-        if 'SPOT' in account_type:
+        if 'SPOT' in account_type or 'UNIFIED' in account_type:
             return await self._get_balance(trading_account, coins)
 
     async def _get_balance(self, account: Account, coins: list[Asset | Coin | str] = None) -> list[Asset]:
@@ -184,7 +184,7 @@ class Bybit(CEX):
 
 async def main():
     db = DBHelper(Web3mtENV.LOCAL_CONNECTION_STRING)
-    profile = await db.get_row_by_id(1, LocalProfile)
+    profile = await db.get_row_by_id(1, Profile)
     bybit = Bybit(profile)
     # await bybit.get_funding_balance(coins=['SOL'])
     print(await bybit.get_sub_account_list())

@@ -31,7 +31,7 @@ class Asset:
     def __str__(self) -> str:
         return (
             f'{self.format_total()} {self.coin.symbol} = '
-            f'{self.coin.price * self.total if self.coin.price else None:.2f}$'
+            f'{self.coin.price * self.total if self.coin.price else 0:.2f}$'
         )
 
     def __repr__(self):
