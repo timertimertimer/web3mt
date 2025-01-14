@@ -197,7 +197,7 @@ class CustomAsyncSession(AsyncSession):
 
 class ProfileSession(CustomAsyncSession):
     def __init__(
-            self, profile: Profile, config: SessionConfig = None, **kwargs
+            self, profile: 'Profile', config: SessionConfig = None, **kwargs
     ) -> None:
         config = config or SessionConfig()
         config.log_info = str(profile.id)
