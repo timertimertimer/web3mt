@@ -1,12 +1,12 @@
 import asyncio
 from datetime import timedelta
-from pprint import pprint
 
 from sqlalchemy import select, desc
 
 from examples.offchain.icloud.model import CONNECTION_STRING, IcloudEmail
 from web3mt.utils import CustomAsyncSession, sleep
 from web3mt.utils.db import create_db_instance
+from web3mt.utils.logger import my_logger as logger
 
 with open('cookies.txt', encoding='utf-8') as file:
     cookie_str = file.read().strip()
@@ -15,7 +15,7 @@ for cookie in cookie_str.split(';'):
     if cookie:
         name, value = cookie.split('=', maxsplit=1)
         cookies[name] = value
-db = create_db_instance(CONNECTION_STRING, query_echo=True)
+db = create_db_instance(CONNECTION_STRING)
 
 
 class Icloud:
@@ -44,8 +44,10 @@ class Icloud:
         _, data = await self.session.post(
             f'{self.base_url_v1}/reserve', params=self.params, json=dict(hme=new_email, label=str(label), note='')
         )
-        if not (data := data.get('result')):
+        if not (data.get('result')):
+            logger.warning(f'Failed to reserve email {new_email}. {data.get("error", {}).get("errorMessage")}')
             return
+        data = data['result']
         return IcloudEmail(label=int(label), login=data['hme']['hme'])
 
     async def generate_email(self):
