@@ -28,7 +28,7 @@ class Warmup(DEX):
         'Blur': '0x0000000000a39bb272e79075ade125fd351887ac'
     }
 
-    def __init__(self, session: CustomAsyncSession = None, client: Client = None, profile: Profile = None):
+    def __init__(self, session: CustomAsyncSession = None, client: ProfileClient = None, profile: Profile = None):
         super().__init__(session=session, client=client, profile=profile)
         self.okx = OKX()
         self.total_fee = Decimal(0)
@@ -279,7 +279,7 @@ async def bridge(profile: Profile):
 
 
 async def check_nonce(profile: Profile) -> Profile | None:
-    client = Client(profile=profile)
+    client = ProfileClient(profile=profile)
     nonce = await client.nonce()
     if nonce == 0:
         return profile

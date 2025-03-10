@@ -451,8 +451,8 @@ class Token(Coin):
         return symbol
 
     async def get_token_info(self) -> 'Token':
-        from web3mt.onchain.evm.client import BaseClient
-        return await BaseClient(chain=self.chain).get_onchain_token_info(token=self)
+        from web3mt.onchain.evm.client import BaseEVMClient
+        return await BaseEVMClient(chain=self.chain).get_onchain_token_info(token=self)
 
 
 class TokenAmount:

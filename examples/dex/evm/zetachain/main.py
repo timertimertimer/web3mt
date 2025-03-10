@@ -11,7 +11,7 @@ from eth_account.messages import encode_typed_data, encode_defunct
 from examples.dex.evm.zetachain.config import *
 from examples.dex.evm.zetachain.db import update_stats, create_table
 from web3mt.cex import OKX
-from web3mt.onchain.evm.client import Client, ClientConfig
+from web3mt.onchain.evm.client import ProfileClient, ClientConfig
 from web3mt.onchain.evm.models import ZetaChain, TokenAmount, BNB, Token, DefaultABIs
 from web3mt.utils import set_windows_event_loop_policy, my_logger, sleep, ProfileSession
 
@@ -24,7 +24,7 @@ async def zeta_and_bnb_price() -> tuple[Decimal, Decimal]:
     return await okx_.get_coin_price('ZETA'), await okx_.get_coin_price('BNB')
 
 
-class ZetachainHub(Client):
+class ZetachainHub(ProfileClient):
 
     def __init__(self, profile: Profile):
         super().__init__(
@@ -327,7 +327,7 @@ class ZetachainHub(Client):
         )
 
     async def receive_bnb(self) -> None:
-        bsc_client = Client(chain=BNB, profile=self.profile)
+        bsc_client = ProfileClient(chain=BNB, profile=self.profile)
         if (await bsc_client.balance_of()).ether == 0:
             return
         await sleep(delay_between_rpc_requests, echo=False)
@@ -642,7 +642,7 @@ async def process_account(profile: Profile) -> dict | None:
 
 
 async def swap_btc_to_zeta(profile: Profile):
-    client = Client(
+    client = ProfileClient(
         chain=ZetaChain,
         profile=profile,
         config=ClientConfig(delay_between_requests=delay_between_rpc_requests)

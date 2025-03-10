@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import AsyncIterable
 from web3db import Profile
 from web3mt.dex.models import DEX, PriceImpactException
-from web3mt.onchain.evm.client import Client
+from web3mt.onchain.evm.client import ProfileClient
 from web3mt.onchain.evm.models import *
 from web3mt.onchain.evm.models import Sepolia
 from web3mt.utils import FileManager, my_logger, CustomAsyncSession
@@ -46,7 +46,7 @@ class Uniswap(DEX):
         )
     }
 
-    def __init__(self, client: Client = None, session: CustomAsyncSession = None, profile: Profile = None):
+    def __init__(self, client: ProfileClient = None, session: CustomAsyncSession = None, profile: Profile = None):
         self._weth_address = None
         super().__init__(session, client, profile)
 

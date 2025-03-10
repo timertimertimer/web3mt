@@ -4,7 +4,7 @@ import asyncio
 from web3db import DBHelper, Profile
 from dotenv import load_dotenv
 
-from web3mt.onchain.evm.client import Client
+from web3mt.onchain.evm.client import ProfileClient
 from web3mt.onchain.evm.models import Token
 from web3mt.utils import ProfileSession, my_logger, set_windows_event_loop_policy, FileManager
 
@@ -22,7 +22,7 @@ async def claim(profile: Profile):
         'Origin': 'https://polyhedra.foundation',
         'Referer': 'https://polyhedra.foundation/'
     }
-    client = Client(profile=profile)
+    client = ProfileClient(profile=profile)
     contract = client.w3.eth.contract(
         address=client.w3.to_checksum_address('0x9234f83473C03be04358afC3497d6293B2203288'),
         abi=abi
@@ -56,7 +56,7 @@ async def claim(profile: Profile):
 
 
 async def send_to_okx(profile: Profile):
-    client = Client(profile=profile)
+    client = ProfileClient(profile=profile)
     balance = await client.balance_of(token=Token(chain=client.chain, address=token_address))
     if balance.wei > 0:
         ok, tx_hash_or_err = await client.transfer_token(

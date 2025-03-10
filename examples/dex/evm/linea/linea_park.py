@@ -14,7 +14,7 @@ from curl_cffi.requests import RequestsError
 from nltk.corpus import words
 from web3db import DBHelper, Profile
 
-from web3mt.onchain.evm.client import Client
+from web3mt.onchain.evm.client import ProfileClient
 from web3mt.onchain.evm.models import Linea, TokenAmount, Token
 from web3mt.utils import my_logger, ProfileSession, sleep
 from db import task_done, get_task_status, select_profile, insert_record
@@ -22,7 +22,7 @@ from db import task_done, get_task_status, select_profile, insert_record
 load_dotenv()
 
 
-class LineaPark(Client):
+class LineaPark(ProfileClient):
     def __init__(self, profile: Profile):
         super().__init__(chain=Linea, profile=profile)
         self.tasks = [

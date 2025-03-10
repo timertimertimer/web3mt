@@ -24,7 +24,7 @@ class Logger:
         )
         log_configs = [
             ('success.log', ['SUCCESS']),
-            ('info.log', ['INFO', 'DEBUG']),
+            ('info.log', ['INFO', 'DEBUG', 'TRACE']),
             ('error.log', ['ERROR', 'CRITICAL', 'WARNING'])
         ]
         for filename, levels in log_configs:

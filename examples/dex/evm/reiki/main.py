@@ -22,7 +22,7 @@ class Reiki:
     def __init__(self, profile: Profile):
         self.profile = profile
         self.session = ProfileSession(profile)
-        self.client = Client(chain=opBNB, profile=profile)
+        self.client = ProfileClient(chain=opBNB, profile=profile)
 
     async def __aenter__(self):
         return self

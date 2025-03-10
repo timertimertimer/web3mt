@@ -7,7 +7,7 @@ from web3.exceptions import Web3RPCError
 from web3db import Profile, DBHelper
 
 from web3mt.consts import Web3mtENV
-from web3mt.onchain.evm.client import Client, BaseClient, TransactionParameters
+from web3mt.onchain.evm.client import ProfileClient, BaseEVMClient, TransactionParameters
 from web3mt.onchain.evm.models import *
 from web3mt.onchain.evm.models import Xterio
 from web3mt.utils import my_logger, ProfileSession
@@ -18,7 +18,7 @@ main_chains = [Ethereum, Scroll, zkSync, Base, Zora, Optimism, Arbitrum, Linea]
 
 async def _get_balance(profile: Profile, chain: Chain, semaphore: asyncio.Semaphore) -> TokenAmount:
     async with semaphore:
-        client = Client(chain=chain, profile=profile)
+        client = ProfileClient(chain=chain, profile=profile)
         return await client.balance_of()
 
 
@@ -27,7 +27,7 @@ async def _get_balance_multicall(
         token: Token = Ethereum.native_token, echo: bool = False,
         is_condition=lambda x: x.ether > 0
 ) -> TokenAmount:
-    client = BaseClient(chain=chain)
+    client = BaseEVMClient(chain=chain)
 
     contract = client.w3.eth.contract(to_checksum_address(token.address), abi=DefaultABIs.token)
     total_by_chain = TokenAmount(0, token=token)
@@ -107,7 +107,7 @@ async def check_balance_batch(chains: list[Chain] = None):
     my_logger.info(full_log)
 
 
-async def have_balance(client: Client, ethers: float = 0, echo: bool = False) -> bool:
+async def have_balance(client: ProfileClient, ethers: float = 0, echo: bool = False) -> bool:
     balance = await client.balance_of(echo=echo)
     if balance.ether > ethers:
         return True
@@ -115,7 +115,7 @@ async def have_balance(client: Client, ethers: float = 0, echo: bool = False) ->
 
 
 async def check_eth_activated_profile(profile: Profile, log_only_activated: bool = False) -> int | None:
-    client = Client(profile=profile)
+    client = ProfileClient(profile=profile)
     nonce = await client.nonce()
     log = f'{client} | Nonce - {nonce}'
     if nonce == 0:
@@ -128,7 +128,7 @@ async def check_eth_activated_profile(profile: Profile, log_only_activated: bool
 
 
 async def deposit_token_to_okx(profile: Profile, amount: TokenAmount, use_full_balance: bool = False):
-    client = Client(profile=profile, chain=amount.token.chain)
+    client = ProfileClient(profile=profile, chain=amount.token.chain)
     balance = await client.balance_of(token=amount.token)
     client.chain.eip1559_tx = False
     TransactionParameters.gas_price_multiplier = 1.7
@@ -166,10 +166,15 @@ async def info():
         await ProfileSession(profile).check_proxy()
 
 
+async def sign(profile: Profile, message: str):
+    client = ProfileClient(profile=profile)
+    print(client.sign(message))
+
+
 async def main():
-    profiles = await db.get_rows_by_id([105], Profile)
+    profiles = await db.get_rows_by_id([1], Profile)
     await asyncio.gather(
-        *[deposit_token_to_okx(profile, TokenAmount(0, token=Token(Scroll)), True) for profile in profiles]
+        *[sign(profile, 'Welcome to Cysic！') for profile in profiles]
     )
 
 

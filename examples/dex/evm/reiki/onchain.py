@@ -1,14 +1,14 @@
 from web3db.models import Profile
 from web3 import Web3
 
-from web3mt.onchain.evm.client import Client
+from web3mt.onchain.evm.client import ProfileClient
 from web3mt.onchain.evm.models import Token, BNB, opBNB
 from web3mt.utils import FileManager, my_logger
 
 contract_address = '0xa4Aff9170C34c0e38Fed74409F5742617d9E80dc'
 
 
-async def is_minted(client: Client) -> bool:
+async def is_minted(client: ProfileClient) -> bool:
     minted = await client.balance_of(token=Token(address=contract_address, chain=client.chain))
     if int(minted.ether) == 1:
         return True
@@ -16,7 +16,7 @@ async def is_minted(client: Client) -> bool:
 
 
 async def mint_profile(profile: Profile) -> str | bool:
-    client = Client(chain=BNB, profile=profile)
+    client = ProfileClient(chain=BNB, profile=profile)
     client.default_abi = FileManager.read_json('abi.json')['profile']
     if await is_minted(client):
         my_logger.success(f'{profile.id} | {client.account.address} | Already minted')
@@ -38,7 +38,7 @@ async def mint_profile(profile: Profile) -> str | bool:
 
 
 async def mint_chip(profile: Profile, nonce: str, signature: str):
-    client = Client(chain=opBNB, profile=profile)
+    client = ProfileClient(chain=opBNB, profile=profile)
     contract = client.w3.eth.contract(
         address=client.w3.to_checksum_address('0x00a9de8af37a3179d7213426e78be7dfb89f2b19'),
         abi=FileManager.read_json('abi.json')['ticket']

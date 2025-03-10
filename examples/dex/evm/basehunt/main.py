@@ -12,7 +12,7 @@ from web3db import DBHelper, Profile
 from web3mt.cex import OKX
 from web3mt.consts import Web3mtENV
 from web3mt.dex.models import DEX
-from web3mt.onchain.evm.client import Client
+from web3mt.onchain.evm.client import ProfileClient
 from web3mt.onchain.evm.models import TokenAmount, Base, Arbitrum, Optimism, Token, Linea, Zora, zkSync
 from web3mt.utils import FileManager, sleep, my_logger
 from web3mt.utils.custom_sessions import SessionConfig, RETRY_COUNT, CustomAsyncSession
@@ -35,7 +35,7 @@ class Basehunt(DEX):
     NAME = 'Basehunt'
     API = 'https://basehunt.xyz/api'
 
-    def __init__(self, session: CustomAsyncSession = None, client: Client = None, profile: Profile = None):
+    def __init__(self, session: CustomAsyncSession = None, client: ProfileClient = None, profile: Profile = None):
         super().__init__(session=session, client=client, profile=profile)
         self.session.config.sleep_after_request = True
         self.session.config.sleep_range = (5, 10)
@@ -67,7 +67,7 @@ class Basehunt(DEX):
         points_data = await self.state()
         state = [state for state in states if state.id == self.client.profile.id]
         if state:
-            state[0].points = points_data['scoreData']['currentScore']
+            state[0].sp = points_data['scoreData']['currentScore']
         await state_db.add_record(
             state[0] if state else BasehuntState(
                 id=self.client.profile.id,

@@ -1,7 +1,7 @@
 import asyncio
 
 from web3db import DBHelper, Profile
-from web3mt.onchain.evm.client import Client
+from web3mt.onchain.evm.client import ProfileClient
 from web3mt.onchain.evm.models import TokenAmount, zkSync
 from web3mt.utils import CustomAsyncSession, FileManager, my_logger
 
@@ -27,7 +27,7 @@ contracts = {
 abi = FileManager.read_json("abi.json")
 
 
-async def get_signature(proxy_string: str, nft_number: int, client: Client):
+async def get_signature(proxy_string: str, nft_number: int, client: ProfileClient):
     async with CustomAsyncSession(proxy_string) as session:
         payload = {
             "trancnt": await client.nonce(),
@@ -40,7 +40,7 @@ async def get_signature(proxy_string: str, nft_number: int, client: Client):
 
 
 async def mint(profile: Profile):
-    client = Client(chain=zkSync, profile=profile)
+    client = ProfileClient(chain=zkSync, profile=profile)
     client.default_abi = abi
     if not await client.balance_of():
         my_logger.info(f"{client} | No balance, skipping")

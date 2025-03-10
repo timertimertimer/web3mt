@@ -20,7 +20,7 @@ from web3mt.consts import Web3mtENV, DEV
 from web3mt.utils import sleep, my_logger
 
 __all__ = [
-    'TransactionParameters', 'Client', 'ClientConfig', 'BaseClient'
+    'TransactionParameters', 'ProfileClient', 'ClientConfig', 'BaseEVMClient'
 ]
 
 
@@ -147,7 +147,7 @@ class ClientConfig:
         self.wait_for_gwei = wait_for_gwei
 
 
-class BaseClient:
+class BaseEVMClient:
     def __init__(
             self,
             account: LocalAccount = None,
@@ -222,7 +222,7 @@ class BaseClient:
         return max_priority_fee_per_gas
 
     def _update_log_info(self):
-        self.log_info = f'BaseClient | {self._account.address} ({self._chain.name})'
+        self.log_info = f'{self._account.address} ({self._chain.name})'
 
     def _update_web3(self):
         SleepAfterRequestMiddleware.delay_between_requests = self.config.delay_between_requests
@@ -239,7 +239,13 @@ class BaseClient:
         )
         self.w3.middleware_onion.inject(ExtraDataToPOAMiddleware, layer=0)
 
-    async def nonce(self, owner_address: str) -> int:
+    def sign(self, text) -> str:
+        return self.w3.eth.account.sign_message(
+            encode_defunct(text=text), private_key=self.account.key.hex()
+        ).signature.hex()
+
+    async def nonce(self, owner_address: str = None) -> int:
+        owner_address = owner_address or self.account.address
         return await self.w3.eth.get_transaction_count(owner_address)
 
     async def get_onchain_token_info(self, contract: AsyncContract = None, token: Token = None) -> Token | None:
@@ -268,18 +274,29 @@ class BaseClient:
         await token.update_price()
         return token.price
 
-    async def balance_of(self, owner_address: str, contract: AsyncContract = None, token: Token = None) -> TokenAmount:
+    async def balance_of(
+            self, contract: AsyncContract = None, token: Token = None, owner_address: str = None, echo: bool = DEV,
+            remove_zero_from_echo: bool = DEV
+    ) -> TokenAmount:
+        owner_address = owner_address or self.account.address
         token = token or self.chain.native_token
-        if token == self.chain.native_token:
-            return await self._native_balance(owner_address)
-        token = await self.get_onchain_token_info(contract=contract, token=token)
-        contract = contract or self.w3.eth.contract(to_checksum_address(token.address), abi=DefaultABIs.token)
-        amount = await contract.functions.balanceOf(owner_address).call()
-        return TokenAmount(amount, True, token)
+        if token != self.chain.native_token:
+            token = await self.get_onchain_token_info(contract=contract, token=token)
+            contract = contract or self.w3.eth.contract(to_checksum_address(token.address), abi=DefaultABIs.token)
+            amount = await contract.functions.balanceOf(owner_address).call()
+            balance = TokenAmount(amount, True, token)
+        else:
+            balance = await self._native_balance(owner_address)
+        if echo:
+            if not remove_zero_from_echo:
+                my_logger.debug(f'{self.log_info} | Balance - {balance}')
+            elif balance:
+                my_logger.debug(f'{self.log_info} | Balance - {balance}')
+        return balance
 
     async def _native_balance(self, owner_address: str) -> TokenAmount:
         try:
-            balance = await self.w3.eth.get_balance(owner_address)
+            balance = await self.w3.eth.get_balance(to_checksum_address(owner_address))
         except (ClientHttpProxyError, ClientResponseError) as e:
             my_logger.error(
                 f'{self.log_info} | Couldn\'t fetch {self.chain.native_token.symbol} balance. {e.message or type(e)}'
@@ -288,6 +305,8 @@ class BaseClient:
         except TimeoutError:
             my_logger.warning(f'{self.log_info} | Timeout. Maybe bad proxy: {self.proxy}')
             balance = 0
+        except Exception as e:
+            pass
         return TokenAmount(amount=balance, wei=True, token=Token(chain=self.chain))
 
     async def wait_for_gwei(self):
@@ -301,6 +320,125 @@ class BaseClient:
                     await sleep(15, log_info=self.log_info, echo=self.config.sleep_echo)
                 else:
                     break
+
+    async def tx(
+            self,
+            to: str,
+            name: str,
+            data: str = None,
+            value: TokenAmount = TokenAmount(0),
+            gas_limit: int = None,
+            max_priority_fee_per_gas: int = None,
+            max_fee_per_gas: int = None,
+            use_full_balance: bool = False,
+            return_fee_in_usd: bool = False,
+            **kwargs
+    ) -> tuple[bool, str | Exception | HexBytes] | Decimal:
+        tx_params = await self.create_tx_params(
+            to=to, data=data, value=value, gas_limit=gas_limit, max_priority_fee_per_gas=max_priority_fee_per_gas,
+            max_fee_per_gas=max_fee_per_gas, use_full_balance=use_full_balance, **kwargs
+        )
+        if isinstance(tx_params, tuple) and not tx_params[0]:
+            return tx_params
+        res = await self.tx_with_params(name, tx_params)
+        if return_fee_in_usd and res:
+            return tx_params.fee.amount_in_usd
+        return res
+
+    async def create_tx_params(
+            self,
+            to: str = None,
+            data: str = None,
+            gas_limit: int = None,
+            value: TokenAmount | int = TokenAmount(0),
+            max_priority_fee_per_gas: int = None,
+            max_fee_per_gas: int = None,
+            use_full_balance: bool = False,
+            tx_params: TransactionParameters = None,
+            **kwargs
+    ) -> TransactionParameters | tuple[bool, str]:
+        nonce = kwargs.get('nonce', await self.nonce())
+        tx_params = tx_params or TransactionParameters(
+            from_=self.account.address, to=to, nonce=nonce, data=data, value=value,
+            gas_limit=gas_limit, max_priority_fee_per_gas=max_priority_fee_per_gas, max_fee_per_gas=max_fee_per_gas,
+            chain=self.chain
+        )
+        await self.wait_for_gwei()
+        if not tx_params.gas_limit:
+            try:
+                tx_p_d = tx_params.to_dict()
+                tx_params.gas_limit = await self.w3.eth.estimate_gas(tx_p_d)
+            except (ContractLogicError, ValueError) as err:
+                my_logger.warning(f'{self.log_info} | Couldn\'t estimate gas. Transaction wasn\'t send - {err}')
+                return False, err
+        if self.chain.eip1559_tx:
+            if not tx_params.max_priority_fee_per_gas:
+                tx_params.max_priority_fee_per_gas = await self.w3.eth.max_priority_fee
+            latest_block = await self.w3.eth.get_block('latest')
+            base_fee_per_gas = latest_block.get('baseFeePerGas', 0)
+            if not tx_params.max_fee_per_gas:
+                tx_params.max_fee_per_gas = base_fee_per_gas + tx_params.max_priority_fee_per_gas
+        else:
+            tx_params.gas_price = await self.w3.eth.gas_price
+        if value.token == self.chain.native_token and use_full_balance:
+            tx_params.value = await self.balance_of() - tx_params.fee - TokenAmount(0.0001,
+                                                                                    token=self.chain.native_token)
+        return tx_params
+
+    async def tx_with_params(
+            self, name: str, tx_params: TransactionParameters
+    ) -> tuple[bool, Exception | HexBytes | str]:
+        while True:
+            ok, tx_hash_or_err = await self._send_transaction(tx_params)
+            try:
+                res = await self.verify_transaction(tx_hash_or_err, name)
+                break
+            except TimeExhausted:
+                if self.config.do_no_matter_what:
+                    tx_params = await self.create_tx_params(tx_params=tx_params)
+                else:
+                    return ok, tx_hash_or_err
+        if res:
+            my_logger.debug(f'{self.log_info} | {name} done. Cost - {tx_params.value}. Fee - {tx_params.fee}')
+        return res, tx_hash_or_err
+
+    async def _send_transaction(self, tx_params: TransactionParameters) -> tuple[bool, Exception | HexBytes | str]:
+        while True:
+            try:
+                sign = self.w3.eth.account.sign_transaction(tx_params.to_dict(), self.account.key.hex())
+            except Exception as e:
+                input()
+            try:
+                tx_hash = (await self.w3.eth.send_raw_transaction(sign.raw_transaction)).hex()
+                break
+            except ValueError as e:
+                error_message = e.args[0]["message"]
+                if 'invalid nonce' in error_message or 'nonce too low' in error_message:
+                    tx_params.nonce += 1
+                elif 'replacement transaction underpriced' in error_message:
+                    last_block = await self.w3.eth.get_block('latest')
+                    tx_params.max_priority_fee_per_gas = tx_params.max_priority_fee_per_gas
+                    tx_params.max_fee_per_gas = last_block['baseFeePerGas'] + tx_params.max_priority_fee_per_gas
+                elif 'overshot' in error_message:
+                    overshot = TokenAmount(int(error_message.split('overshot ')[1]), True, self.chain.native_token)
+                    ratio = overshot.wei / tx_params.value.wei
+                    if ratio < 0.1:
+                        my_logger.debug(f'{self.log_info} | Some overshot. Reducing tx value to -{overshot}')
+                        tx_params.value -= overshot
+                    else:
+                        my_logger.warning(
+                            f'{self.log_info} | {error_message}. Ratio of tx value and overshot: {ratio}%')
+                        return False, e
+                else:
+                    my_logger.warning(f'{self.log_info} | {error_message}')
+                    return False, e
+            except Exception as e:
+                my_logger.error(f'{self.log_info} | {e}')
+                return False, e
+        if not tx_hash.startswith('0x'):
+            tx_hash = '0x' + tx_hash
+        my_logger.info(f'{self.log_info} | Transaction {self.chain.explorer}/tx/{tx_hash} with {tx_params} sent')
+        return True, tx_hash
 
     async def verify_transaction(self, tx_hash: _Hash32, tx_name: str) -> bool:
         explorer_link = f'{self.chain.explorer}/tx/{tx_hash}'
@@ -328,7 +466,7 @@ class BaseClient:
                 return False
 
 
-class Client(BaseClient):
+class ProfileClient(BaseEVMClient):
 
     def __init__(
             self,
@@ -353,28 +491,6 @@ class Client(BaseClient):
         if self.profile:
             self.log_info = f"{self.profile.id} | {self.log_info}"
 
-    def sign(self, text) -> str:
-        return self.w3.eth.account.sign_message(
-            encode_defunct(text=text), private_key=self.account.key.hex()
-        ).signature.hex()
-
-    async def nonce(self, owner_address: str = None) -> int:
-        owner_address = owner_address or self.account.address
-        return await super().nonce(owner_address)
-
-    async def balance_of(
-            self, contract: AsyncContract = None, token: Token = None, owner_address: str = None, echo: bool = DEV,
-            remove_zero_from_echo: bool = DEV
-    ) -> TokenAmount:
-        owner_address = owner_address or self.account.address
-        balance = await super().balance_of(owner_address, contract, token)
-        if echo:
-            if not remove_zero_from_echo:
-                my_logger.debug(f'{self.log_info} | Balance - {balance}')
-            elif balance:
-                my_logger.debug(f'{self.log_info} | Balance - {balance}')
-        return balance
-
     async def get_allowance(
             self, spender_contract: AsyncContract, token: Token, owner_address: str = None
     ) -> TokenAmount:
@@ -397,47 +513,6 @@ class Client(BaseClient):
     ):
         if (await self.balance_of(token=Token(self.chain, address=to))).ether > 0:
             ...
-
-    async def tx(
-            self,
-            to: str,
-            name: str,
-            data: str = None,
-            value: TokenAmount = TokenAmount(0),
-            gas_limit: int = None,
-            max_priority_fee_per_gas: int = None,
-            max_fee_per_gas: int = None,
-            use_full_balance: bool = False,
-            return_fee_in_usd: bool = False,
-            **kwargs
-    ) -> tuple[bool, str | Exception | HexBytes] | Decimal:
-        tx_params = await self.create_tx_params(
-            to=to, data=data, value=value, gas_limit=gas_limit, max_priority_fee_per_gas=max_priority_fee_per_gas,
-            max_fee_per_gas=max_fee_per_gas, use_full_balance=use_full_balance, **kwargs
-        )
-        if isinstance(tx_params, tuple) and not tx_params[0]:
-            return tx_params
-        res = await self.tx_with_params(name, tx_params)
-        if return_fee_in_usd and res:
-            return tx_params.fee.amount_in_usd
-        return res
-
-    async def tx_with_params(
-            self, name: str, tx_params: TransactionParameters
-    ) -> tuple[bool, Exception | HexBytes | str]:
-        while True:
-            ok, tx_hash_or_err = await self._send_transaction(tx_params)
-            try:
-                res = await self.verify_transaction(tx_hash_or_err, name)
-                break
-            except TimeExhausted:
-                if self.config.do_no_matter_what:
-                    tx_params = await self.create_tx_params(tx_params=tx_params)
-                else:
-                    return ok, tx_hash_or_err
-        if res:
-            my_logger.debug(f'{self.log_info} | {name} done. Cost - {tx_params.value}. Fee - {tx_params.fee}')
-        return res, tx_hash_or_err
 
     async def approve(
             self, spender_contract: AsyncContract, amount: TokenAmount
@@ -483,80 +558,3 @@ class Client(BaseClient):
             data=contract.encode_abi('transfer', args=[to, amount.wei]),
             **kwargs
         )
-
-    async def create_tx_params(
-            self,
-            to: str = None,
-            data: str = None,
-            gas_limit: int = None,
-            value: TokenAmount | int = TokenAmount(0),
-            max_priority_fee_per_gas: int = None,
-            max_fee_per_gas: int = None,
-            use_full_balance: bool = False,
-            tx_params: TransactionParameters = None,
-            **kwargs
-    ) -> TransactionParameters | tuple[bool, str]:
-        nonce = kwargs.get('nonce', await self.nonce())
-        tx_params = tx_params or TransactionParameters(
-            from_=self.account.address, to=to, nonce=nonce, data=data, value=value,
-            gas_limit=gas_limit, max_priority_fee_per_gas=max_priority_fee_per_gas, max_fee_per_gas=max_fee_per_gas,
-            chain=self.chain
-        )
-        await self.wait_for_gwei()
-        if not tx_params.gas_limit:
-            try:
-                tx_p_d = tx_params.to_dict()
-                tx_params.gas_limit = await self.w3.eth.estimate_gas(tx_p_d)
-            except (ContractLogicError, ValueError) as err:
-                my_logger.warning(f'{self.log_info} | Couldn\'t estimate gas. Transaction wasn\'t send - {err}')
-                return False, err
-        if self.chain.eip1559_tx:
-            if not tx_params.max_priority_fee_per_gas:
-                tx_params.max_priority_fee_per_gas = await self.w3.eth.max_priority_fee
-            latest_block = await self.w3.eth.get_block('latest')
-            base_fee_per_gas = latest_block.get('baseFeePerGas', 0)
-            if not tx_params.max_fee_per_gas:
-                tx_params.max_fee_per_gas = base_fee_per_gas + tx_params.max_priority_fee_per_gas
-        else:
-            tx_params.gas_price = await self.w3.eth.gas_price
-        if value.token == self.chain.native_token and use_full_balance:
-            tx_params.value = await self.balance_of() - tx_params.fee - TokenAmount(0.0001, token=self.chain.native_token)
-        return tx_params
-
-    async def _send_transaction(self, tx_params: TransactionParameters) -> tuple[bool, Exception | HexBytes | str]:
-        while True:
-            try:
-                sign = self.w3.eth.account.sign_transaction(tx_params.to_dict(), self.account.key.hex())
-            except Exception as e:
-                input()
-            try:
-                tx_hash = (await self.w3.eth.send_raw_transaction(sign.raw_transaction)).hex()
-                break
-            except ValueError as e:
-                error_message = e.args[0]["message"]
-                if 'invalid nonce' in error_message or 'nonce too low' in error_message:
-                    tx_params.nonce += 1
-                elif 'replacement transaction underpriced' in error_message:
-                    last_block = await self.w3.eth.get_block('latest')
-                    tx_params.max_priority_fee_per_gas = tx_params.max_priority_fee_per_gas
-                    tx_params.max_fee_per_gas = last_block['baseFeePerGas'] + tx_params.max_priority_fee_per_gas
-                elif 'overshot' in error_message:
-                    overshot = TokenAmount(int(error_message.split('overshot ')[1]), True, self.chain.native_token)
-                    ratio = overshot.wei / tx_params.value.wei
-                    if ratio < 0.1:
-                        my_logger.debug(f'{self.log_info} | Some overshot. Reducing tx value to -{overshot}')
-                        tx_params.value -= overshot
-                    else:
-                        my_logger.warning(
-                            f'{self.log_info} | {error_message}. Ratio of tx value and overshot: {ratio}%')
-                        return False, e
-                else:
-                    my_logger.warning(f'{self.log_info} | {error_message}')
-                    return False, e
-            except Exception as e:
-                my_logger.error(f'{self.log_info} | {e}')
-                return False, e
-        if not tx_hash.startswith('0x'):
-            tx_hash = '0x' + tx_hash
-        my_logger.info(f'{self.log_info} | Transaction {self.chain.explorer}/tx/{tx_hash} with {tx_params} sent')
-        return True, tx_hash

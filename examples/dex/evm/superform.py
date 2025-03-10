@@ -3,7 +3,7 @@ import asyncio
 from web3db import Profile, DBHelper
 
 from web3mt.consts import Web3mtENV
-from web3mt.onchain.evm.client import Client
+from web3mt.onchain.evm.client import ProfileClient
 from web3mt.onchain.evm.models import Base, TokenAmount
 from web3mt.utils import my_logger, ProfileSession
 
@@ -13,7 +13,7 @@ class Superform:
     PIGGY_API_URL = 'https://www.superform.xyz/api/proxy/token-distribution'
 
     def __init__(self, profile: Profile):
-        self.client = Client(chain=Base, profile=profile)
+        self.client = ProfileClient(chain=Base, profile=profile)
         self.session = ProfileSession(profile)
 
     async def __aenter__(self):

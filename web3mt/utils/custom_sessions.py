@@ -1,7 +1,9 @@
 import asyncio
 from functools import partialmethod
 from json import JSONDecodeError
-from typing import Callable, Any, Union, TYPE_CHECKING
+from typing import Callable, Any, Union, TYPE_CHECKING, Optional
+
+from curl_cffi import CurlMime
 from curl_cffi.requests import AsyncSession, RequestsError, Response, BrowserType
 from better_proxy import Proxy
 
@@ -51,6 +53,7 @@ class CustomAsyncSession(AsyncSession):
         "User-Agent": 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) '
                       'Chrome/131.0.0.0 Safari/537.36',
     }
+    _stable_version: str | None = None
 
     def __init__(
             self,
@@ -69,6 +72,7 @@ class CustomAsyncSession(AsyncSession):
         )
 
     async def __aenter__(self):
+        await self.update_user_agent()
         await self.check_proxy()
         return self
 
@@ -125,13 +129,20 @@ class CustomAsyncSession(AsyncSession):
 
         return wrapper
 
-    async def get_stable_chrome_user_agent(self):  # TODO
+    async def update_user_agent(self):
         response, data = await self.get(
             'https://versionhistory.googleapis.com/v1/chrome/platforms/android/channels/stable/versions/all/releases',
             params={'filter': 'endtime=none'}
         )
-        self.headers
-        ...
+        CustomAsyncSession._stable_version = data['releases'][0]['version'].split('.')[0]
+        new_headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) '
+                          f'Chrome/{CustomAsyncSession._stable_version}.0.0.0 Safari/537.36',
+            'Sec-Ch-Ua': f'"Not_A Brand";v="8", "Chromium";v="{CustomAsyncSession._stable_version}", '
+                         f'"Google Chrome";v="{CustomAsyncSession._stable_version}"'
+        }
+        CustomAsyncSession.DEFAULT_HEADERS.update(new_headers)
+        self.headers.update(new_headers)
 
     async def check_proxy(self, echo: bool = True, **request_kwargs) -> str | None:
         try:
@@ -160,9 +171,10 @@ class CustomAsyncSession(AsyncSession):
             url: str,
             params: dict = None,
             headers: dict = None,
+            cookies: dict = None,
             data: dict | str = None,
             json: dict = None,
-            cookies: dict = None,
+            multipart: Optional[CurlMime] = None,
             follow_redirects: bool = False,
             verify: bool = False,
             retry_count: int = RETRY_COUNT,
@@ -174,9 +186,10 @@ class CustomAsyncSession(AsyncSession):
                 url=url,
                 params=params,
                 headers=headers,
+                cookies=cookies,
                 data=data,
                 json=json,
-                cookies=cookies,
+                multipart=multipart,
                 allow_redirects=follow_redirects,
                 verify=verify,
                 timeout=timeout
@@ -217,7 +230,10 @@ async def get_location(ip: str = Web3mtENV.DEFAULT_PROXY):
     await client.get_proxy_location(ip)
 
 
+async def test_ua_update():
+    async with CustomAsyncSession() as session:
+        print(session.headers)
+
+
 if __name__ == '__main__':
-    session = CustomAsyncSession('http://5LaUaSN2:mPghNZ7w@194.58.58.122:63376')
-    # asyncio.run(session.check_proxy())
-    asyncio.run(session.get_proxy_location())
+    asyncio.run(test_ua_update())

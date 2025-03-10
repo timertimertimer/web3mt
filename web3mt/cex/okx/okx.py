@@ -144,6 +144,22 @@ class OKX(CEX):
             my_logger.info(user.trading_account)
         return user.trading_account.assets
 
+    async def get_earn_balance(self, coins: list[Asset | Coin | str] = None) -> list[Asset]:
+        user = self.main_user
+        _, data = await self.get(
+            f'finance/savings/balance',
+            params={'ccy': ','.join([coin.symbol for coin in coins])} if coins else {}
+        )
+        data = data['data']
+        for currency in data:
+            balance = Decimal(currency['loanAmt']) + Decimal(currency['earnings']) + Decimal(currency['pendingAmt'])
+            user.funding_account.assets.append(Asset(
+                Coin(currency['ccy']), available_balance=0, frozen_balance=balance, total=balance
+            ))
+        if DEV:
+            my_logger.info(user.trading_account)
+        return user.funding_account.assets
+
     async def get_sub_account_list(self) -> list[User]:
         _, data = await self.get('users/subaccount/list')
         return [User(self, sub_account['subAcct']) for sub_account in data['data']]
@@ -363,7 +379,7 @@ async def start_websocket():
 
 async def start():
     okx = OKX()
-    print(await okx.get_sub_account_list())
+    print(await okx.get_earn_balance())
 
 
 if __name__ == '__main__':

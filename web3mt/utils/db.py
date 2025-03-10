@@ -7,8 +7,10 @@ from web3mt.offchain.webshare import Webshare
 from web3mt.utils import my_logger
 
 
-def create_db_instance(connection_string: str = Web3mtENV.LOCAL_CONNECTION_STRING):
-    db = DBHelper(connection_string)
+def create_db_instance(
+        connection_string: str = Web3mtENV.LOCAL_CONNECTION_STRING, engine_echo: bool = False, query_echo: bool = False
+) -> DBHelper:
+    db = DBHelper(connection_string, engine_echo=engine_echo, query_echo=query_echo)
     return db
 
 

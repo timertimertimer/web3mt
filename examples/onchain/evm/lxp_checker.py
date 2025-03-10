@@ -3,7 +3,7 @@ import asyncio
 from web3db import Profile, DBHelper
 
 from web3mt.consts import Web3mtENV
-from web3mt.onchain.evm.client import Client
+from web3mt.onchain.evm.client import ProfileClient
 from web3mt.onchain.evm.models import Linea, Token, TokenAmount
 from web3mt.utils import my_logger, ProfileSession
 
@@ -16,7 +16,7 @@ class Checker:
 
     def __init__(self, profile: Profile):
         self.session = ProfileSession(profile)
-        self.client = Client(profile, Linea)
+        self.client = ProfileClient(profile, Linea)
 
     async def get_lxp(self, echo: bool = True) -> TokenAmount:
         return await self.client.balance_of(
@@ -43,7 +43,7 @@ async def change_proxy(profile: Profile):
 
 
 async def main():
-    profiles = await db.get_profiles_with_individual_proxies()
+    profiles = await db.get_rows_by_id([1, 99, 100, 102, 105, 107, 108, 113], Profile)
     checkers = await asyncio.gather(*[change_proxy(profile) for profile in profiles])
     res = await asyncio.gather(*[checker.get_lxp() for checker in checkers])
     my_logger.info(f'Total LXP: {sum(res)}')
