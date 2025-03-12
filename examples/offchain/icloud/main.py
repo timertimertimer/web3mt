@@ -66,9 +66,10 @@ async def start_generator():
     while True:
         for _ in range(5):
             new_email = await icloud.reserve_email(last_label)
-            await db.add_record(new_email)
+            if new_email:
+                await db.add_record(new_email)
+                last_label += 1
             await sleep(5, echo=True)
-            last_label += 1
         await sleep(time_delta=timedelta(hours=1, minutes=1), echo=True)
 
 
