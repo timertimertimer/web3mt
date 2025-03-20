@@ -116,17 +116,18 @@ class SaharaClient(DEX):
         df = pd.DataFrame.from_dict(self.tasks_stat, orient='index').reset_index()
         df.rename(columns={'index': 'Task'}, inplace=True)
         df = df[[
-            "Task", "role", "submitted", "waiting_review", "approved",
-            "accuracy", 'sp_per_dp', "difficulty", "dp_left", "earned", "workload_type"
+            "Task", "role", "difficulty", "submitted", "waiting_review", "approved", 'sp_per_dp',
+            "accuracy", "dp_left", "earned", "workload_type"
         ]]
         df.rename(columns={
+            'Task': f'{self.account.account_id} | Task',
             'role': 'Role',
+            'difficulty': 'Difficulty',
             'submitted': 'Submitted',
             'waiting_review': 'Waiting Review',
             'approved': 'Approved',
-            'accuracy': 'Accuracy',
             'sp_per_dp': 'SP/DP',
-            'difficulty': 'Difficulty',
+            'accuracy': 'Accuracy',
             'dp_left': 'DP Left',
             'earned': 'Earned',
             'workload_type': 'Is Limit Reached'
