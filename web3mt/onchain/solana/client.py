@@ -12,6 +12,7 @@ from web3db.core import DBHelper
 from web3db.models import Profile
 
 from web3mt.consts import Web3mtENV, DEV
+from web3mt.onchain.solana.models.token import Token
 from web3mt.utils.logger import my_logger
 
 rpcs = [
@@ -99,6 +100,12 @@ class BaseClient:
         resp = await self.client.get_signatures_for_address(self.account.pubkey())
         return resp.value
 
+    async def get_onchain_token_info(self, token: Token = None):
+        response = await self.client.get_account_info(token.address)
+        if "value" in response and response["value"] is not None:
+            data = response["value"]["data"]
+            Token.decimals = int.from_bytes(bytes.fromhex(data[0][:2]), "little")
+
 
 class Client(BaseClient):
     def __init__(self, profile: Profile, *args, **kwargs):
@@ -125,7 +132,8 @@ async def get_balance_batch(profiles: list[Profile], rpc: str = None):
         resps = await provider.make_batch_request(reqs, parsers)  # type: ignore
         for resp, profile in zip(resps, profiles_):
             my_logger.info(
-                f'{profile.id} | {Keypair.from_base58_string(profile.solana_private).pubkey()} | {resp.value / 10 ** 9} SOL')
+                f'{profile.id} | {Keypair.from_base58_string(profile.solana_private).pubkey()} | {resp.value / 10 ** 9} SOL'
+            )
 
 
 async def main():

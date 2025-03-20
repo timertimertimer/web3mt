@@ -7,6 +7,7 @@ load_dotenv()
 class Web3mtENV:
     PASSPHRASE = os.getenv("PASSPHRASE", "")
     DEFAULT_PROXY = os.getenv("DEFAULT_PROXY", "")
+    ROTATING_PROXY = os.getenv("ROTATING_PROXY", "")
     SOME_PASSWORD = os.getenv("SOME_PASSWORD", "")
     DEFAULT_EVM_ADDRESS = os.getenv("DEFAULT_EVM_ADDRESS", "")
 

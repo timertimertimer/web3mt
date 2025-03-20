@@ -1,0 +1,835 @@
+import asyncio
+import json
+import random
+from asyncio import Semaphore
+from datetime import datetime, timezone
+from functools import partialmethod
+from json import JSONDecodeError
+from pprint import pprint
+
+import pandas as pd
+from curl_cffi.requests import RequestsError
+from eth_account import Account
+from eth_utils import to_checksum_address
+from anycaptcha import Solver, Service
+from tabulate import tabulate
+
+from examples.dex.evm.sahara.db import SaharaAccount
+from examples.dex.evm.sahara.utils import (
+    recover_public_key, SaharaAI_Testnet, db_helper, abi, contract_address, update_exam_storage, gpt_client,
+    answers_storage, exam_system_messages, parse_requirement_bitmap, review_system_messages, Conversation, offset
+)
+from examples.dex.evm.sahara.utils import data_path
+from web3mt.consts import Web3mtENV
+from web3mt.dex.models import DEX
+from web3mt.onchain.evm.client import BaseEVMClient
+from web3mt.utils import my_logger as logger, CustomAsyncSession, sleep
+
+Account.enable_unaudited_hdwallet_features()
+
+
+async def solve_captcha(url: str) -> str:
+    solver = Solver(Service.TWOCAPTCHA, Web3mtENV.TWO_CAPTCHA_API_KEY)
+    solved = await solver.solve_recaptcha_v2(
+        site_key='6LddMRwqAAAAABCvraXuK1zkUN6CEnRRiTdp9dgT',
+        page_url=url,
+    )
+    return solved.solution.token
+
+
+class SaharaClient(DEX):
+    MAIN_DOMAIN = 'https://app.saharalabs.ai'
+    API_URL = f'{MAIN_DOMAIN}/api'
+    CURRENT_SEASON_NAME = 'Data Services - Season 2'
+
+    def __init__(self, account: SaharaAccount, save_session: bool = True):
+        self._sp = 0
+        self._exp = 0
+        self.account = account
+        session = CustomAsyncSession(proxy=account.proxy, headers={'Referer': 'https://app.saharalabs.ai/'})
+        if self.account.session_token:
+            session.headers.update({'Authorization': f'Bearer {self.account.session_token}'})
+        session.config.log_info = str(account.account_id)
+        client = BaseEVMClient(
+            Account.from_key(account.private) if account.private.startswith('0x') or ' ' not in account.private else
+            Account.from_mnemonic(account.private),
+            chain=SaharaAI_Testnet, proxy=account.proxy
+        )
+        super().__init__(session, client)
+        self.level_achievement_manager_contract = (
+            self.client.w3.eth.contract(to_checksum_address(contract_address), abi=abi)
+        )
+        self.user_info = dict()
+        self.save_session = save_session
+        self.conversations = dict()
+        self.tasks_stat = dict()
+
+    def __str__(self):
+        return f'{self.account.account_id} | {self.client.account.address}'
+
+    def __repr__(self):
+        return self.__str__()
+
+    async def __aenter__(self):
+        if not await self.profile():
+            self.session.headers.pop('Authorization', None)
+            await self.login()
+        return self
+
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        self.show_and_save_stats()
+        await self.session.close()
+        if self.save_session:
+            await db_helper.edit(self.account)
+
+    @property
+    def sp(self):
+        return self._sp
+
+    @sp.setter
+    def sp(self, value):
+        self._sp = value
+
+    @property
+    def exp(self):
+        return self._exp
+
+    @exp.setter
+    def exp(self, value):
+        self._exp = value
+
+    async def _generate_message(self):
+        _, data = await self.session.post(
+            f'{self.MAIN_DOMAIN}/v1/auth/generate-message',
+            json={'address': self.client.account.address, 'chainId': hex(SaharaAI_Testnet.chain_id)}
+        )
+        if not data['success']:
+            logger.error(f'{self} | Something went wrong: {data}')
+            return
+        data = data.get('data')
+        if data['ipAllowed']:
+            return data['message']
+        else:
+            logger.warning(f'{self} | IP {self.client.proxy} not allowed')
+
+    def show_and_save_stats(self):
+        df = pd.DataFrame.from_dict(self.tasks_stat, orient='index').reset_index()
+        df.rename(columns={'index': 'Task'}, inplace=True)
+        df = df[[
+            "Task", "role", "submitted", "waiting_review", "approved",
+            "accuracy", 'sp_per_dp', "difficulty", "dp_left", "earned", "workload_type"
+        ]]
+        df.rename(columns={
+            'role': 'Role',
+            'submitted': 'Submitted',
+            'waiting_review': 'Waiting Review',
+            'approved': 'Approved',
+            'accuracy': 'Accuracy',
+            'sp_per_dp': 'SP/DP',
+            'difficulty': 'Difficulty',
+            'dp_left': 'DP Left',
+            'earned': 'Earned',
+            'workload_type': 'Is Limit Reached'
+        }, inplace=True)
+        df['Accuracy'] = df['Accuracy'].apply(lambda x: f'{x:.2f}%' if x else None)
+        df['Earned'] = df['Earned'].apply(lambda x: f'{x} SP')
+        df['Is Limit Reached'] = df['Is Limit Reached'].apply(lambda x: True if x in [2, 5, 7] else False)
+        print(tabulate(df, headers='keys', tablefmt='grid', showindex=False))
+        df.to_csv(data_path / 'stats' / f'{self.account.account_id}.csv', index=False)
+
+    async def login(self):
+        message = await self._generate_message()
+        signature = self.client.sign(message)
+        pubkey = recover_public_key(message, signature)
+        _, data = await self.session.post(f'{self.MAIN_DOMAIN}/v1/auth/login', json=dict(
+            message=message, pubkey=pubkey, signature='0x' + signature, role=7, walletType="io.rabby"
+        ))
+        if not data['success']:
+            logger.error(f'{self} | Something went wrong: {data}')
+            return
+        logger.debug(f'{self} | Logged in')
+        data = data.get('data')
+        token = data['token']
+        self.user_info = data['user']
+        self.account.session_token = token
+        self.session.headers.update({'Authorization': f'Bearer {token}'})
+
+    async def profile(self):
+        while True:
+            try:
+                _, data = await self.session.get(f'{self.API_URL}/users/v3/profile')
+                break
+            except RequestsError as e:
+                self.session.headers.pop('Authorization', None)
+                await self.login()
+        if not data['success']:
+            logger.error(f'{self} | Something went wrong: {data}')
+            return
+        data = data.get('data')
+        self.user_info = data
+        return data
+
+    async def all_seasons_points(self):
+        try:
+            _, data = await self.session.get(f'{self.API_URL}/vault/seasons')
+        except RequestsError as e:
+            logger.error(f'{self} | {e}')
+            return
+        if not data['success']:
+            logger.error(f'{self} | Something went wrong: {data}')
+            return
+        seasons = data.get('data')
+        total_sp = 0
+        for season in seasons:
+            if season['name'] == self.CURRENT_SEASON_NAME:
+                self.exp = season['userExp']
+            total_sp += season['userPoints']
+            logger.info(f'{self} | {season["name"]}. {season["userPoints"]} SP, {season["userExp"]} EXP')
+        logger.debug(f'{self} | Total: {total_sp} SP. Current EXP: {self.exp}')
+        self.sp = total_sp
+        return True
+
+    async def in_progress_achievements(self):
+        _, data = await self.session.get(f'{self.API_URL}/achievement/in-progress')
+        if not data['success']:
+            logger.error(f'{self} | Something went wrong: {data}')
+            return
+        return data['data']
+
+    async def claim_in_progress_achievements(self):
+        seasons = await self.in_progress_achievements()
+        for season in seasons:
+            for achievement in season['achievementDTOS']:
+                user_achievement = achievement['userAchievement']
+                achievement_info = achievement['achievement']
+                achievement_id = achievement_info['id']
+                achievement_name = achievement_info['name']
+                if achievement_name in ["Titan’s Vigil", "Forge of Perseverance"]:
+                    for requirement_id in parse_requirement_bitmap(
+                            user_achievement['requirementBitmap'], user_achievement['onChainRequirementBitmap']
+                    ):
+                        await self.claim_exp_process(achievement_name, achievement_id, requirement_id)
+        await self.check_achievements_level()
+        logger.success(f'{self} | Claimed all in-progress achievements')
+
+    async def claim_exp_process(self, achievement_name: str, achievement_id: int, requirement_number: int):
+        if not await self.client.balance_of():
+            logger.warning(f'{self} | No balance, can\'t claim')
+            return
+        exp, increased_exp, level = (
+                await self.prepare_claim_exp(achievement_id, requirement_number) or (None, None, None)
+        )
+        if not exp:
+            return
+        if not (sig := await self.proofs_level(exp, level)):
+            logger.warning(f'{self} | No signature to claim EXP for achievement "{achievement_name}"')
+            return
+        if not (tx_hash := await self.claim_exp_onchain(level, exp, sig)):
+            return
+        await sleep(10, echo=True, log_info=f'{self}')
+        if await self.sync_claim_exp(tx_hash):
+            logger.success(f'{self} | Claimed {increased_exp} EXP for {achievement_name}. Total EXP: {exp}')
+
+    async def prepare_claim_exp(self, achievement_id: int, requirement_number: int) -> tuple[int, int, int] | None:
+        _, data = await self.session.post(f'{self.API_URL}/achievement/prepare-claim-exp', json=dict(
+            achievementId=achievement_id, requirementNo=requirement_number
+        ))
+        if not data['success']:
+            logger.error(f'{self} | Something went wrong: {data}')
+            return
+        if data := data.get('data'):
+            return data['exp'], data['increasedExp'], data['level']
+
+    async def proofs_level(self, exp: int, level: int, can_upgrade: bool | None = None) -> str | None:
+        _, data = await self.session.post(
+            f'{self.API_URL}/proofs/level',
+            json=dict(exp=exp, level=level) | (dict(canUpgrade=can_upgrade) if can_upgrade else {})
+        )
+        if data := data.get('data'):
+            return data['sig']
+
+    async def claim_exp_onchain(self, level: int, exp: int, sig: str):
+        ok, tx_hash = await self.client.tx(
+            self.level_achievement_manager_contract.address, 'Claim EXP',
+            self.level_achievement_manager_contract.encode_abi('upgradeLevel', args=[level, exp, sig])
+        )
+        if ok:
+            return tx_hash
+
+    async def sync_claim_exp(self, tx_hash: str) -> bool:
+        _, data = await self.session.post(f'{self.API_URL}/achievement/sync-claim-exp', json={'hash': tx_hash})
+        return data['data']
+
+    async def check_achievements_level(self):
+        _, data = await self.session.get(f'{self.API_URL}/achievement/profile')
+        if not data['success']:
+            logger.error(f'{self} | Something went wrong: {data}')
+            return
+        data = data.get('data')
+        current_level = data['onChainLevel']
+        claimed_level = data['claimedLevel']
+        claimed_exp = data['claimedExp']
+        while current_level < claimed_level:
+            if not (sig := await self.proofs_level(claimed_exp, current_level, can_upgrade=True)):
+                return
+            if not (tx_hash := await self.claim_exp_onchain(current_level, claimed_exp, sig)):
+                return
+            await sleep(10)
+            if await self.sync_level_up(tx_hash):
+                current_level += 1
+                logger.success(f'{self} | Claimed level {current_level}')
+        logger.debug(f'{self} | Current level: {current_level}, current EXP: {claimed_exp}')
+        return current_level
+
+    async def sync_level_up(self, tx_hash: str) -> bool:
+        _, data = await self.session.post(f'{self.API_URL}/users/sync-levelup', json={'hash': tx_hash})
+        return data['data']
+
+    async def mint_in_progress_achievements(self):
+        seasons = await self.in_progress_achievements()
+        for season in seasons:
+            for achievement in season['achievementDTOS']:
+                user_achievement = achievement['userAchievement']
+                achievement_info = achievement['achievement']
+                achievement_id = achievement_info['id']
+                achievement_name = achievement_info['name']
+                achievement_mint_start = datetime.fromisoformat(
+                    achievement_info['mintStartAt']
+                ) if achievement_info['mintStartAt'] else datetime.min.replace(tzinfo=timezone.utc)
+                achievement_mint_end = datetime.fromisoformat(
+                    achievement_info['mintEndAt']
+                ) if achievement_info['mintEndAt'] else datetime.max.replace(tzinfo=timezone.utc)
+                if (
+                        user_achievement['passed'] and
+                        not user_achievement['onChainPassed'] and
+                        achievement_mint_start < datetime.now(tz=timezone.utc) < achievement_mint_end
+                ):
+                    await self.mint_achievement_proccess(achievement_name, user_achievement['level'], achievement_id)
+        logger.success(f'{self} | Minted all in-progress achievements')
+
+    async def mint_achievement_proccess(self, achievement_name: str, level: int, achievement_id: int):
+        if not await self.client.balance_of():
+            logger.warning(f'{self} | No balance, can\'t claim')
+            return
+        if not (sig := await self.proofs_achievements(0, level, achievement_id)):
+            logger.warning(f'{self} | No signature to mint achievement "{achievement_name}"')
+            return
+        if not (tx_hash := await self.mint_achievement_onchain(achievement_id, level, 0, sig, achievement_name)):
+            return
+        await sleep(10, echo=True, log_info=f'{self}')
+        if await self.sync_achievement_claimed(tx_hash, achievement_id):
+            logger.success(f'{self} | Minted "{achievement_name}" achievement')
+
+    async def proofs_achievements(
+            self, exp: int, level: int, platform_achievement_id: int, enable_estimate: bool = True
+    ):
+        try:
+            _, data = await self.session.post(f'{self.API_URL}/proofs/achievements', json=dict(
+                exp=exp, level=level, platformAchievementId=platform_achievement_id, enableEstimate=enable_estimate
+            ))
+        except RequestsError as e:
+            logger.error(f'{self} | {e}')
+            return
+        if data := data.get('data'):
+            return data['sig']
+
+    async def mint_achievement_onchain(
+            self, achievement_id: int, level: int, exp: int, sig: str, achievement_name: str
+    ):
+        ok, tx_hash = await self.client.tx(
+            self.level_achievement_manager_contract.address, f'Mint {achievement_name}',
+            self.level_achievement_manager_contract.encode_abi('safeMint', args=[achievement_id, level, exp, sig])
+        )
+        if ok:
+            return tx_hash
+
+    async def sync_achievement_claimed(self, tx_hash: str, achievement_id: int) -> bool | None:
+        _, data = await self.session.post(
+            f'{self.API_URL}/achievement/sync-achievement-claimed',
+            json=dict(hash=tx_hash, achievementId=achievement_id)
+        )
+        if not data['success']:
+            logger.error(f'{self} | Something went wrong: {data}')
+            return
+        return data['success']
+
+    async def get_tasks(self, status: str):
+        _, data = await self.session.get(
+            f'{self.API_URL}/jobs/jobs',
+            params=dict(sortType='createdAtDesc', jobType='individual', status=status, limit=20, page=1)
+        )
+        if not data['success']:
+            logger.error(f'{self} | Something went wrong: {data}')
+            return
+        if data := data.get('data'):
+            data = data['data']
+            return data
+
+    get_in_progress_tasks = partialmethod(get_tasks, "Active")
+    get_closed_tasks = partialmethod(get_tasks, "Complete")
+
+    async def do_tasks(self):
+        await self.apply_new_tasks()
+        await self.do_in_progress_tasks(review=True, annotate=True)
+
+    async def apply_new_tasks(self):
+        while tasks := await self.get_new_tasks():
+            task = tasks[0]
+            task_name = task['job']['name']
+            exam_status = (task.get('userRequirementStatus') or [{}])[0].get('status', 0)
+            if exam_status == 0:
+                if requirements := task['requirements']:
+                    await self.take_exam_gpt(requirements[0]['relationId'], task_name)
+            await self.join_task(task['job']['id'], task_name)
+            await sleep(15)
+        await update_exam_storage()
+
+    async def get_new_tasks(self):
+        _, data = await self.session.get(
+            f'{self.API_URL}/jobs/market/individuals', params=dict(sortType='earliest', limit=20, page=1)
+        )
+        if not data['success']:
+            logger.error(f'{self} | Something went wrong: {data}')
+            return
+        if data := data.get('data'):
+            data = data['data']
+            for task in data:
+                if task['userRequirementStatus'] and task['userRequirementStatus'][0]['status'] == 2:
+                    data.remove(task)
+            logger.info(f'{self} | Got {len(data)} new tasks')
+            return data
+
+    async def join_task(self, task_id: int, task_name: str = None):
+        _, data = await self.session.post(f'{self.API_URL}/jobs/join/{task_id}/individual')
+        if not data['success']:
+            logger.error(f'{self} | Something went wrong: {data}')
+            return
+        data = data['data']
+        role = data['role']
+        logger.debug(f'{self} | Joined task "{task_name}" ({task_id}) as "{role}"')
+
+    async def take_exam_gpt(self, exam_id: int, task_name: str = None):
+        await self.join_exam(exam_id)
+        await self.get_exam_status(exam_id)
+        questions, task_id = await self.get_exam_questions_and_task_id(exam_id)
+        answers = list()
+        question_and_answers = dict()
+        for i, question in enumerate(questions):
+            question_string = question['question'].strip()
+            question_id = question['id']
+            details = json.loads(question['details'])
+            options = details['options']
+            answer, index = await self._get_answer_to_question_index_gpt(question_string, options, exam_id)
+            if not answer:
+                return
+            question_and_answers[question_string] = answer
+            answers.append(dict(questionId=question_id, answer=index, explanation=""))
+        await sleep(10, 20)
+        accuracy = await self.submit_exam_answers(exam_id, task_id, answers, task_name)
+        if accuracy and accuracy == 100 and exam_id not in answers_storage:
+            answers_storage[exam_id] = question_and_answers
+
+    async def join_exam(self, exam_id: int):
+        _, data = await self.session.post(f'{self.API_URL}/individuals/join/{exam_id}/exam')
+        if not data['success']:
+            logger.error(f'{self} | Something went wrong: {data}')
+            return
+        if data := data.get('data'):
+            return data
+
+    async def get_exam_status(self, exam_id: int) -> bool | None:
+        _, data = await self.session.get(f'{self.API_URL}/individuals/exam/{exam_id}/status')
+        if not data['success']:
+            logger.error(f'{self} | Something went wrong: {data}')
+            return
+        if data := data.get('data'):
+            return data
+
+    async def get_exam_task_id(self, exam_id: int):
+        _, data = await self.session.post(f'{self.API_URL}/individuals/exam/{exam_id}/tasks')
+        if not data['success']:
+            logger.error(f'{self} | Something went wrong: {data}')
+            return
+        if data := data.get('data'):
+            return data[0]['task']['id']
+
+    async def submit_exam_answers(self, exam_id: int, task_id: int, answers: list[dict], task_name: str = None):
+        _, data = await self.session.post(f'{self.API_URL}/individuals/exam/{exam_id}/submit-answers', json=dict(
+            data=[dict(submitAnswer=dict(answers=answers, feedback=''), taskId=task_id)]
+        ))
+        if not data['success']:
+            logger.error(f'{self} | Something went wrong: {data}')
+            return
+        if data := data.get('data'):
+            accuracy = float(data['content']) / 100
+            logger.debug(f'{self} | Exam for "{task_name}" ({task_id}) passed. Accuracy: {accuracy:.2f}%')
+            return accuracy
+
+    async def get_exam_questions_and_task_id(self, exam_id: int) -> tuple[list[dict], int] | None:
+        _, data = await self.session.get(f'{self.API_URL}/batches/{exam_id}/labeling-tasks')
+        if not data['success']:
+            logger.error(f'{self} | Something went wrong: {data}')
+            return
+        if data := data.get('data'):
+            return data[0]['tasks'][0]['questions'], data[0]['tasks'][0]['task']['id']
+
+    async def do_in_progress_tasks(self, review: bool = True, annotate: bool = False):
+        for task in await self.get_in_progress_tasks():
+            job_id = task['job']['id']
+            role = task['user']['role']
+            while True:
+                job_data = await self.get_job(job_id)
+                job_name = job_data['job']['name']
+                if role == 'Labeler':
+                    sp_per_dp = job_data['batch']['annotatingPrice']
+                else:
+                    sp_per_dp = job_data['batch']['reviewingPrice']
+                approved_count = job_data['approvedCount']
+                earned = job_data['earning']
+                submitted_count = job_data['submittedCount']
+                waiting_review_count = job_data['waitingReviewCount']
+                accuracy = None
+                if submitted_count and submitted_count - waiting_review_count != 0:
+                    accuracy = (approved_count / (submitted_count - waiting_review_count)) * 100
+                datapoints_left = job_data['jobLeftTaskCount']
+                workload_type = job_data['workloadType']
+                difficulty = job_data['batch']['difficulty']
+                s = (
+                        f'{self} | Task "{job_name}". Role: "{role}". '
+                        f'{approved_count} approved, {submitted_count} submitted, waiting review count {waiting_review_count}. ' +
+                        (f'Accuracy: {accuracy:.2f}%. ' if accuracy else '') +
+                        f'SP/DP: {sp_per_dp}. Earned: {earned} SP. Datapoints left: {datapoints_left}' +
+                        (f'. Limit reached' if workload_type == 5 else '')
+                )
+                self.tasks_stat[job_name] = {
+                    'role': role, 'difficulty': difficulty, 'workload_type': workload_type,
+                    'approved': approved_count, 'submitted': submitted_count, 'waiting_review': waiting_review_count,
+                    'accuracy': accuracy, 'earned': earned, 'dp_left': datapoints_left, 'sp_per_dp': sp_per_dp
+                }
+                logger.debug(s) if workload_type == 5 else logger.info(s)
+                if not datapoints_left:
+                    logger.info(f'{self} | No DP for "{job_name}" ({job_id}), role "{role}"')
+                    break
+                elif workload_type in [2, 5]:
+                    logger.debug(f'{self} | Limit reached for "{job_name}"')
+                    break
+                elif workload_type == 7:
+                    logger.debug(f'{self} | Daily limit reached for "{job_name}"')
+                    break
+                if role == 'Labeler':
+                    min_time_seconds = job_data['batch']['annotatingMinDatapointSecond']
+                    if difficulty == 'beginner' and annotate:
+                        await self.do_label_task(job_id, job_name, min_time_seconds)
+                    else:
+                        logger.warning(
+                            f'{self} | Skipping task with role "{role}" and difficulty "{difficulty}" for "{job_name}"'
+                        )
+                        break
+                elif role == 'Reviewer':
+                    min_time_seconds = job_data['batch']['reviewingMinDatapointSecond']
+                    if review:
+                        await self.do_review_task(job_id, job_name, min_time_seconds)
+                    else:
+                        logger.warning(
+                            f'{self} | Skipping task with role "{role}" and difficulty "{difficulty}" for "{job_name}"'
+                        )
+                        break
+
+    async def get_job(self, job_id: int):
+        _, data = await self.session.get(f'{self.API_URL}/jobs/{job_id}/individual')
+        if not data['success']:
+            logger.error(f'{self} | Something went wrong: {data}')
+            return
+        if not (data := data.get('data')):
+            logger.warning(f'{self} | No job data. Maybe something went wrong')
+            return
+        return data
+
+    async def _get_answer_to_question_index_gpt(
+            self, question: str, options: list[str], id_: int
+    ) -> tuple[str, int] | None:
+        if not (answer := answers_storage.get(str(id_), {}).get(question)):
+            response = await gpt_client.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=(exam_system_messages + [{"role": "user", "content": f'{question}\n' + '\n'.join(options)}]),
+                web_search=False
+            )
+            answer = response.choices[0].message.content.strip()
+        if not answer:
+            logger.error(f'{self} | No answer for question "{question}". Options: {options}')
+            return
+        try:
+            index = options.index(answer)
+        except Exception as e:
+            raise e
+        return answer, index
+
+    async def do_label_task(self, job_id: int, job_name: str, min_time_seconds: int):
+        questions = await self.get_questions(job_id)
+        honey_pot_data = await self.get_annotating_answers(job_id, job_name)
+        if not honey_pot_data:
+            await sleep(5, 10, log_info=f'{self}')
+            return
+        submit_hp_answers, submit_answers, hp_data, task_descriptions = honey_pot_data
+        content = ''
+        for question in questions:
+            if question['answerRequired']:
+                details = json.loads(question['details'])
+                min_length = details['minLength']
+                max_length = details['maxLength']
+                content += f'{question["question"]} Answer in {min_length}-{max_length} characters\n'
+        if not self.conversations.get(job_id):
+            self.conversations[job_id] = Conversation(
+                task_description=task_descriptions[0], first_content=content, offset=offset
+            )
+        for i in range(len(submit_hp_answers)):
+            answer, index = await self._get_answer_to_question_index_gpt(
+                hp_data[i]['question'], hp_data[i]['options'], job_id
+            )
+            submit_hp_answers[i]['submitAnswer'] = str(index)
+            while True:
+                try:
+                    gpt_answers = (await self.conversations[job_id].get_response()).split('\n\n')
+                except Exception as e:
+                    logger.warning(f'{self} | Problem with GPT. {e.args[0]}')
+                    await sleep(5, 10, log_info=f'{self}', echo=True)
+                    return
+                if len(gpt_answers) != len(questions):
+                    self.conversations[job_id] = Conversation(
+                        task_description=task_descriptions[0], first_content=content, offset=offset
+                    )
+                else:
+                    break
+            submit_answers[i]['submitAnswer']['answers'] = [
+                dict(answer=gpt_answers[k], explanation='', questionId=questions[k]['id']) for k in
+                range(len(questions))
+            ]
+            time = 0
+            for k in range(len(questions)):
+                if i > 0 and k == 0:
+                    duration = random.randint(min_time_seconds * 1000, (min_time_seconds + 10) * 1000)
+                else:
+                    duration = 0
+                duration += random.randint(5000, 15000)
+                time += duration
+            submit_answers[i]['time'] = time
+        total_time = sum([answer['time'] for answer in submit_answers]) / 1000
+        await sleep(
+            min_time_seconds + total_time if total_time < min_time_seconds else total_time, log_info=f'{self}',
+            echo=True
+        )
+        await self.submit_annotating(submit_answers, submit_hp_answers, job_name, job_id)
+
+    async def do_review_task(self, job_id: int, job_name: str, min_time_seconds: int):
+        questions = await self.get_questions(job_id)
+        answers_data = await self.get_review_answers(job_id, job_name)
+        if not answers_data:
+            await sleep(5, 10, log_info=f'{self}')
+            return
+        hp_reviews, answers_set, reviews = answers_data
+        text_questions = [question['question'] for question in questions if question['answerRequired']]
+        for i, (answers, review) in enumerate(zip(answers_set, reviews)):
+            text_answers = [
+                answer['answer'] for k, answer in enumerate(answers) if questions[k]['answerRequired']
+            ]
+            try:
+                response = await gpt_client.chat.completions.create(
+                    model="gpt-4o-mini",
+                    messages=(review_system_messages + [{
+                        "role": "user",
+                        "content": '\n'.join([f'{q}. {a}' for q, a in zip(text_questions, text_answers)])
+                    }]),
+                    web_search=False,
+                    stream=False,
+                    proxy=Web3mtENV.ROTATING_PROXY
+                )
+            except Exception as e:
+                logger.warning(f'{self} | Problem with GPT. {e.args[0]}')
+                await sleep(5, 10, log_info=f'{self}', echo=True)
+                return
+            try:
+                gpt_answers = [
+                    json.loads(answer) for answer in response.choices[0].message.content.lower().strip().split(',')
+                ]
+            except JSONDecodeError as e:
+                raise e
+            time = 0
+            question_reviews = []
+            for k, (answer, question) in enumerate(zip(gpt_answers, questions)):
+                if i > 0 and k == 0:
+                    duration = random.randint(min_time_seconds * 1000, (min_time_seconds + 10) * 1000)
+                else:
+                    duration = 0
+                duration += random.randint(1000, 5000)
+                time += duration
+                question_reviews.append(dict(
+                    approve=answer, comment="", duration=duration, questionId=question['id']
+                ))
+            review['time'] = time
+            review['questionReviews'] = question_reviews
+        total_time = sum([review['time'] for review in reviews]) / 1000
+        await sleep(
+            min_time_seconds + total_time if total_time < min_time_seconds else total_time, log_info=f'{self}',
+            echo=True
+        )
+        await self.submit_review(hp_reviews, reviews, job_name, job_id)
+
+    async def get_questions(self, job_id: int) -> list[dict] | None:
+        _, data = await self.session.get(f'{self.API_URL}/jobs/{job_id}/labeling-tasks')
+        if not data['success']:
+            logger.error(f'{self} | Something went wrong: {data}')
+            return
+        if not (data := data.get('data')):
+            logger.warning(f'{self} | No labeling tasks for job. Maybe something went wrong')
+            return
+        data = data[0]
+        questions = data['tasks'][0]['questions']
+        for question in questions:
+            if not question['answerRequired']:
+                pass
+        return questions
+
+    async def get_review_answers(self, job_id: int, task_name: str) -> tuple[list, list, list] | None:
+        try:
+            _, data = await self.session.get(f'{self.API_URL}/jobs/{job_id}/take-review-jobs/for-individuals')
+        except RequestsError as e:
+            if 'User workloads exceeded' in str(e):
+                logger.info(f'{self} | Limit exceeded for "{task_name}" task')
+            return
+        if not data['success']:
+            logger.error(f'{self} | Something went wrong: {data}')
+            return
+        if not (data := data.get('data')):
+            logger.warning(f'{self} | No review jobs for "{task_name}" task')
+            return
+        hp_reviews = []
+        reviews = []
+        answers = []
+        for question in data:
+            honey_pot_data = question['honeyPotData']
+            if honey_pot_data:
+                honey_pot_session: dict = honey_pot_data['hpReviewSession']
+                honey_pot_answer: bool = honey_pot_data['question']['answerCorrect']
+                hp_reviews.append(dict(
+                    reviewResult=honey_pot_answer,
+                    hpReviewSessionId=honey_pot_session['id'],
+                    honeyPotReviewSession=honey_pot_session,
+                ))
+            answers.append([answer for answer in json.loads(question['taskSession']['answer'])])
+            reviews.append(dict(
+                approve=True,
+                jobId=question['taskSession']['jobId'],
+                reviewSessionId=question['reviewSession']['id'],
+                taskSessionId=question['taskSession']['id'],
+            ))
+        return hp_reviews, answers, reviews
+
+    async def get_annotating_answers(self, job_id: int, task_name: str) -> tuple[list, list, list, list] | None:
+        try:
+            _, data = await self.session.get(f'{self.API_URL}/jobs/{job_id}/take-job/for-individuals')
+        except RequestsError as e:
+            if 'User workloads exceeded' in str(e):
+                logger.info(f'{self} | Limit exceeded for "{task_name}" task')
+            return
+        if not data['success']:
+            logger.error(f'{self} | Something went wrong: {data}')
+            return
+        if not (data := data.get('data')):
+            logger.warning(f'{self} | No review jobs for "{task_name}" task')
+            return
+        submit_hp_answers = []
+        submit_answers = []
+        hp_data = []
+        task_descriptions = []
+        for question in data:
+            honey_pot_data = question['honeyPotData']
+            honey_pot_question = honey_pot_data['question']['question']
+            honey_pot_options = json.loads(honey_pot_data['question']['details'])['options']
+            honey_pot_session = honey_pot_data['honeyPotSession']
+            task_session = question['taskSession']
+            submit_hp_answers.append(dict(honeyPotSession=honey_pot_session, taskSessionId=task_session['id']))
+            submit_answers.append(dict(
+                taskSession=task_session, taskSessionId=task_session['id'], submitAnswer=dict(feedback='')
+            ))
+            hp_data.append({'question': honey_pot_question, 'options': honey_pot_options})
+            task_descriptions.append(question['resource']['data'])
+        return submit_hp_answers, submit_answers, hp_data, task_descriptions
+
+    async def submit_review(self, hp_reviews: list[dict], reviews: list[dict], task_name: str, job_id: int):
+        payload = dict(captchaToken="", hpReviews=hp_reviews, reviews=reviews)
+        while True:
+            try:
+                _, data = await self.session.post(f'{self.API_URL}/review-sessions/submit-revisions', json=payload)
+                break
+            except RequestsError as e:
+                logger.warning(f'{self} | {e}')
+                payload['captchaToken'] = await solve_captcha(
+                    f'https://app.saharalabs.ai/#/individualLabeler/working/{job_id}'
+                )
+        if not data['success']:
+            logger.error(f'{self} | Something went wrong: {data}')
+            return
+        logger.success(f'{self} | Submitted {len(reviews)} datapoints for reviewing "{task_name}" task')
+
+    async def submit_annotating(self, answers: list[dict], hp_answers: list[dict], task_name: str, job_id: int):
+        payload = dict(captchaToken=await solve_captcha(
+            f'https://app.saharalabs.ai/#/individualLabeler/working/{job_id}'
+        ), submitAnswers=answers, submitHPAnswers=hp_answers)
+        pprint(payload)
+        try:
+            _, data = await self.session.post(f'{self.API_URL}/task-sessions/submit-answers', json=payload)
+        except RequestsError as e:
+            logger.error(f'{self} | {e}')
+            return
+        if not data['success']:
+            logger.error(f'{self} | Something went wrong: {data}')
+            return
+        logger.success(f'{self} | Submitted {len(answers)} datapoints for annotating "{task_name}" task')
+
+
+async def check_wl():
+    def get_accounts_from_privates():
+        with open(data_path / 'sahara/privates.txt', encoding='utf-8') as file:
+            privates = [row.strip() for row in file.readlines()]
+        return [SaharaAccount(private=private, proxy=Web3mtENV.ROTATING_PROXY) for private in privates]
+
+    MAX_PARALLEL_TASKS = 8
+    semaphore = Semaphore(MAX_PARALLEL_TASKS)
+
+    async def wait_flag(account: SaharaAccount, save_session=False):
+        async with semaphore:
+            async with SaharaClient(account, save_session=save_session) as client:
+                if not client.user_info['waitFlag']:
+                    logger.success(f'{client} | Found')
+
+    accounts = get_accounts_from_privates()
+    # accounts = await db_helper.get_all_from_table(SaharaAccount)
+    await asyncio.gather(*[wait_flag(acc, save_session=False) for acc in accounts])
+
+
+async def points(account: SaharaAccount):
+    async with SaharaClient(account) as client:
+        return client.sp
+
+
+async def points_checker():
+    accounts = await db_helper.get_all_from_table(SaharaAccount)
+    total = await asyncio.gather(*[points(account) for account in accounts])
+    logger.success(f'Total: {sum(total)} SP')
+
+
+async def start(account: SaharaAccount):
+    async with SaharaClient(account) as client:
+        await client.do_tasks()
+        # await client.claim_in_progress_achievements()
+        # await client.mint_in_progress_achievements()
+
+
+async def main():
+    # accounts = await db_helper.get_rows_by_filter([227], SaharaAccount, SaharaAccount.account_id)
+    accounts = await db_helper.get_all_from_table(SaharaAccount)
+    await asyncio.gather(*[start(acc) for acc in accounts])
+
+
+if __name__ == '__main__':
+    asyncio.run(main())

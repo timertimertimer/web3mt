@@ -1,7 +1,7 @@
 import asyncio
 from functools import partialmethod
 from json import JSONDecodeError
-from typing import Callable, Any, Union, TYPE_CHECKING, Optional
+from typing import Callable, Any, TYPE_CHECKING, Optional
 
 from curl_cffi import CurlMime
 from curl_cffi.requests import AsyncSession, RequestsError, Response, BrowserType
@@ -72,15 +72,13 @@ class CustomAsyncSession(AsyncSession):
         )
 
     async def __aenter__(self):
-        await self.update_user_agent()
-        await self.check_proxy()
+        # await self.update_user_agent()
+        # await self.check_proxy()
         return self
 
     async def __aexit__(self, exc_type, exc_val, exc_tb):
         if exc_type:
             my_logger.error(f'{self.config.log_info} | {exc_val}')
-        else:
-            my_logger.success(f'{self.config.log_info} | Tasks done')
         await self.close()
 
     def __str__(self):
