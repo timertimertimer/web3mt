@@ -2,6 +2,7 @@ import asyncio
 import json
 import random
 from asyncio import Semaphore
+from collections import deque
 from datetime import datetime, timezone
 from functools import partialmethod
 from json import JSONDecodeError
@@ -17,7 +18,8 @@ from tabulate import tabulate
 from examples.dex.evm.sahara.db import SaharaAccount
 from examples.dex.evm.sahara.utils import (
     recover_public_key, SaharaAI_Testnet, db_helper, abi, contract_address, update_exam_storage, gpt_client,
-    answers_storage, exam_system_messages, parse_requirement_bitmap, review_system_messages, Conversation, offset
+    answers_storage, exam_system_messages, parse_requirement_bitmap, review_system_messages, Conversation, offset,
+    retry_count
 )
 from examples.dex.evm.sahara.utils import data_path
 from web3mt.consts import Web3mtENV
@@ -28,19 +30,10 @@ from web3mt.utils import my_logger as logger, CustomAsyncSession, sleep
 Account.enable_unaudited_hdwallet_features()
 
 
-async def solve_captcha(url: str) -> str:
-    solver = Solver(Service.TWOCAPTCHA, Web3mtENV.TWO_CAPTCHA_API_KEY)
-    solved = await solver.solve_recaptcha_v2(
-        site_key='6LddMRwqAAAAABCvraXuK1zkUN6CEnRRiTdp9dgT',
-        page_url=url,
-    )
-    return solved.solution.token
-
-
 class SaharaClient(DEX):
     MAIN_DOMAIN = 'https://app.saharalabs.ai'
     API_URL = f'{MAIN_DOMAIN}/api'
-    CURRENT_SEASON_NAME = 'Data Services - Season 2'
+    CURRENT_SEASON_NAME = 'Data Services - Season 3'
 
     def __init__(self, account: SaharaAccount, save_session: bool = True):
         self._sp = 0
@@ -72,12 +65,13 @@ class SaharaClient(DEX):
 
     async def __aenter__(self):
         if not await self.profile():
-            self.session.headers.pop('Authorization', None)
-            await self.login()
+            return
+        await self.all_seasons_points()
         return self
 
     async def __aexit__(self, exc_type, exc_val, exc_tb):
-        self.show_and_save_stats()
+        if self.tasks_stat:
+            self._show_and_save_stats()
         await self.session.close()
         if self.save_session:
             await db_helper.edit(self.account)
@@ -99,10 +93,14 @@ class SaharaClient(DEX):
         self._exp = value
 
     async def _generate_message(self):
-        _, data = await self.session.post(
-            f'{self.MAIN_DOMAIN}/v1/auth/generate-message',
-            json={'address': self.client.account.address, 'chainId': hex(SaharaAI_Testnet.chain_id)}
-        )
+        try:
+            _, data = await self.session.post(
+                f'{self.MAIN_DOMAIN}/v1/auth/generate-message',
+                json={'address': self.client.account.address, 'chainId': hex(SaharaAI_Testnet.chain_id)}
+            )
+        except RequestsError as e:
+            logger.error(f'{self} | {e}')
+            return
         if not data['success']:
             logger.error(f'{self} | Something went wrong: {data}')
             return
@@ -112,7 +110,7 @@ class SaharaClient(DEX):
         else:
             logger.warning(f'{self} | IP {self.client.proxy} not allowed')
 
-    def show_and_save_stats(self):
+    def _show_and_save_stats(self):
         df = pd.DataFrame.from_dict(self.tasks_stat, orient='index').reset_index()
         df.rename(columns={'index': 'Task'}, inplace=True)
         df = df[[
@@ -138,22 +136,37 @@ class SaharaClient(DEX):
         print(tabulate(df, headers='keys', tablefmt='grid', showindex=False))
         df.to_csv(data_path / 'stats' / f'{self.account.account_id}.csv', index=False)
 
-    async def login(self):
-        message = await self._generate_message()
+    async def _solve_captcha(self, url: str) -> str:
+        solver = Solver(Service.TWOCAPTCHA, Web3mtENV.TWO_CAPTCHA_API_KEY)
+        logger.info(f'{self} | Solving captcha')
+        solved = await solver.solve_recaptcha_v2(
+            site_key='6LddMRwqAAAAABCvraXuK1zkUN6CEnRRiTdp9dgT',
+            page_url=url,
+        )
+        return solved.solution.token
+
+    async def login(self) -> bool:
+        if not (message := await self._generate_message()):
+            return False
         signature = self.client.sign(message)
         pubkey = recover_public_key(message, signature)
-        _, data = await self.session.post(f'{self.MAIN_DOMAIN}/v1/auth/login', json=dict(
-            message=message, pubkey=pubkey, signature='0x' + signature, role=7, walletType="io.rabby"
-        ))
+        try:
+            _, data = await self.session.post(f'{self.MAIN_DOMAIN}/v1/auth/login', json=dict(
+                message=message, pubkey=pubkey, signature='0x' + signature, role=7, walletType="io.rabby"
+            ))
+        except RequestsError as e:
+            logger.error(f'{self} | {e}')
+            return False
         if not data['success']:
             logger.error(f'{self} | Something went wrong: {data}')
-            return
+            return False
         logger.debug(f'{self} | Logged in')
         data = data.get('data')
         token = data['token']
         self.user_info = data['user']
         self.account.session_token = token
         self.session.headers.update({'Authorization': f'Bearer {token}'})
+        return True
 
     async def profile(self):
         while True:
@@ -162,7 +175,8 @@ class SaharaClient(DEX):
                 break
             except RequestsError as e:
                 self.session.headers.pop('Authorization', None)
-                await self.login()
+                if not (await self.login()):
+                    return
         if not data['success']:
             logger.error(f'{self} | Something went wrong: {data}')
             return
@@ -275,7 +289,7 @@ class SaharaClient(DEX):
                 return
             if not (tx_hash := await self.claim_exp_onchain(current_level, claimed_exp, sig)):
                 return
-            await sleep(10)
+            await sleep(10, log_info=f'{self}', echo=True)
             if await self.sync_level_up(tx_hash):
                 current_level += 1
                 logger.success(f'{self} | Claimed level {current_level}')
@@ -382,7 +396,7 @@ class SaharaClient(DEX):
                 if requirements := task['requirements']:
                     await self.take_exam_gpt(requirements[0]['relationId'], task_name)
             await self.join_task(task['job']['id'], task_name)
-            await sleep(15)
+            await sleep(30, log_info=f'{self}', echo=True)
         await update_exam_storage()
 
     async def get_new_tasks(self):
@@ -425,7 +439,7 @@ class SaharaClient(DEX):
                 return
             question_and_answers[question_string] = answer
             answers.append(dict(questionId=question_id, answer=index, explanation=""))
-        await sleep(10, 20)
+        await sleep(15, 30, log_info=f'{self}', echo=True)
         accuracy = await self.submit_exam_answers(exam_id, task_id, answers, task_name)
         if accuracy and accuracy == 100 and exam_id not in answers_storage:
             answers_storage[exam_id] = question_and_answers
@@ -475,69 +489,79 @@ class SaharaClient(DEX):
             return data[0]['tasks'][0]['questions'], data[0]['tasks'][0]['task']['id']
 
     async def do_in_progress_tasks(self, review: bool = True, annotate: bool = False):
-        for task in await self.get_in_progress_tasks():
+        q = deque(await self.get_in_progress_tasks())
+        while q:
+            task = q.popleft()
             job_id = task['job']['id']
             role = task['user']['role']
-            while True:
-                job_data = await self.get_job(job_id)
-                job_name = job_data['job']['name']
-                if role == 'Labeler':
-                    sp_per_dp = job_data['batch']['annotatingPrice']
-                else:
-                    sp_per_dp = job_data['batch']['reviewingPrice']
-                approved_count = job_data['approvedCount']
-                earned = job_data['earning']
-                submitted_count = job_data['submittedCount']
-                waiting_review_count = job_data['waitingReviewCount']
-                accuracy = None
-                if submitted_count and submitted_count - waiting_review_count != 0:
-                    accuracy = (approved_count / (submitted_count - waiting_review_count)) * 100
-                datapoints_left = job_data['jobLeftTaskCount']
-                workload_type = job_data['workloadType']
-                difficulty = job_data['batch']['difficulty']
-                s = (
-                        f'{self} | Task "{job_name}". Role: "{role}". '
-                        f'{approved_count} approved, {submitted_count} submitted, waiting review count {waiting_review_count}. ' +
-                        (f'Accuracy: {accuracy:.2f}%. ' if accuracy else '') +
-                        f'SP/DP: {sp_per_dp}. Earned: {earned} SP. Datapoints left: {datapoints_left}' +
-                        (f'. Limit reached' if workload_type == 5 else '')
-                )
-                self.tasks_stat[job_name] = {
-                    'role': role, 'difficulty': difficulty, 'workload_type': workload_type,
-                    'approved': approved_count, 'submitted': submitted_count, 'waiting_review': waiting_review_count,
-                    'accuracy': accuracy, 'earned': earned, 'dp_left': datapoints_left, 'sp_per_dp': sp_per_dp
-                }
-                logger.debug(s) if workload_type == 5 else logger.info(s)
-                if not datapoints_left:
-                    logger.info(f'{self} | No DP for "{job_name}" ({job_id}), role "{role}"')
-                    break
-                elif workload_type in [2, 5]:
-                    logger.debug(f'{self} | Limit reached for "{job_name}"')
-                    break
-                elif workload_type == 7:
-                    logger.debug(f'{self} | Daily limit reached for "{job_name}"')
-                    break
-                if role == 'Labeler':
-                    min_time_seconds = job_data['batch']['annotatingMinDatapointSecond']
-                    if difficulty == 'beginner' and annotate:
+            if not (job_data := await self.get_job(job_id)):
+                continue
+            job_name = job_data['job']['name']
+            if role == 'Labeler':
+                sp_per_dp = job_data['batch']['annotatingPrice']
+            else:
+                sp_per_dp = job_data['batch']['reviewingPrice']
+            approved_count = job_data['approvedCount']
+            earned = job_data['earning']
+            submitted_count = job_data['submittedCount']
+            waiting_review_count = job_data['waitingReviewCount']
+            accuracy = None
+            if submitted_count and submitted_count - waiting_review_count != 0:
+                accuracy = (approved_count / (submitted_count - waiting_review_count)) * 100
+            datapoints_left = job_data['jobLeftTaskCount']
+            workload_type = job_data['workloadType']
+            difficulty = job_data['batch']['difficulty']
+            s = (
+                    f'{self} | Task "{job_name}". Role: "{role}". '
+                    f'{approved_count} approved, {submitted_count} submitted, waiting review count {waiting_review_count}. ' +
+                    (f'Accuracy: {accuracy:.2f}%. ' if accuracy else '') +
+                    f'SP/DP: {sp_per_dp}. Earned: {earned} SP. Datapoints left: {datapoints_left}' +
+                    (f'. Limit reached' if workload_type == 5 else '')
+            )
+            self.tasks_stat[job_name] = {
+                'role': role, 'difficulty': difficulty, 'workload_type': workload_type,
+                'approved': approved_count, 'submitted': submitted_count, 'waiting_review': waiting_review_count,
+                'accuracy': accuracy, 'earned': earned, 'dp_left': datapoints_left, 'sp_per_dp': sp_per_dp
+            }
+            logger.debug(s) if workload_type == 5 else logger.info(s)
+            if workload_type in [2, 5]:
+                logger.debug(f'{self} | Limit reached for "{job_name}"')
+                continue
+            elif workload_type == 7:
+                logger.debug(f'{self} | Daily limit reached for "{job_name}"')
+                continue
+            if role == 'Labeler':
+                min_time_seconds = job_data['batch']['annotatingMinDatapointSecond']
+                if difficulty == 'beginner' and annotate:
+                    if not datapoints_left:
+                        logger.info(f'{self} | No DP for "{job_name}" ({job_id}), role "{role}"')
+                    else:
                         await self.do_label_task(job_id, job_name, min_time_seconds)
+                    q.append(task)
+                else:
+                    logger.warning(
+                        f'{self} | Skipping task with role "{role}" and difficulty "{difficulty}" for "{job_name}"'
+                    )
+            elif role == 'Reviewer':
+                min_time_seconds = job_data['batch']['reviewingMinDatapointSecond']
+                if review:
+                    if not datapoints_left:
+                        logger.info(f'{self} | No DP for "{job_name}" ({job_id}), role "{role}"')
                     else:
-                        logger.warning(
-                            f'{self} | Skipping task with role "{role}" and difficulty "{difficulty}" for "{job_name}"'
-                        )
-                        break
-                elif role == 'Reviewer':
-                    min_time_seconds = job_data['batch']['reviewingMinDatapointSecond']
-                    if review:
                         await self.do_review_task(job_id, job_name, min_time_seconds)
-                    else:
-                        logger.warning(
-                            f'{self} | Skipping task with role "{role}" and difficulty "{difficulty}" for "{job_name}"'
-                        )
-                        break
+                    q.append(task)
+                else:
+                    logger.warning(
+                        f'{self} | Skipping task with role "{role}" and difficulty "{difficulty}" for "{job_name}"'
+                    )
+            await sleep(15, 30, log_info=f'{self}', echo=True)
 
     async def get_job(self, job_id: int):
-        _, data = await self.session.get(f'{self.API_URL}/jobs/{job_id}/individual')
+        try:
+            _, data = await self.session.get(f'{self.API_URL}/jobs/{job_id}/individual')
+        except RequestsError as e:
+            logger.error(f'{self} | {e}')
+            return
         if not data['success']:
             logger.error(f'{self} | Something went wrong: {data}')
             return
@@ -569,7 +593,7 @@ class SaharaClient(DEX):
         questions = await self.get_questions(job_id)
         honey_pot_data = await self.get_annotating_answers(job_id, job_name)
         if not honey_pot_data:
-            await sleep(5, 10, log_info=f'{self}')
+            await sleep(15, 30, log_info=f'{self}', echo=True)
             return
         submit_hp_answers, submit_answers, hp_data, task_descriptions = honey_pot_data
         content = ''
@@ -614,65 +638,65 @@ class SaharaClient(DEX):
                 duration += random.randint(5000, 15000)
                 time += duration
             submit_answers[i]['time'] = time
-        total_time = sum([answer['time'] for answer in submit_answers]) / 1000
-        await sleep(
-            min_time_seconds + total_time if total_time < min_time_seconds else total_time, log_info=f'{self}',
-            echo=True
-        )
+        await sleep(min_time_seconds * len(submit_answers) + random.randint(5, 20), log_info=f'{self}', echo=True)
         await self.submit_annotating(submit_answers, submit_hp_answers, job_name, job_id)
 
     async def do_review_task(self, job_id: int, job_name: str, min_time_seconds: int):
         questions = await self.get_questions(job_id)
         answers_data = await self.get_review_answers(job_id, job_name)
         if not answers_data:
-            await sleep(5, 10, log_info=f'{self}')
+            await sleep(15, 30, log_info=f'{self}', echo=True)
             return
         hp_reviews, answers_set, reviews = answers_data
-        text_questions = [question['question'] for question in questions if question['answerRequired']]
+        text_questions = []
+        for question in questions:
+            if not question['answerRequired']:
+                continue
+            text_questions.append(question['question'])
         for i, (answers, review) in enumerate(zip(answers_set, reviews)):
-            text_answers = [
-                answer['answer'] for k, answer in enumerate(answers) if questions[k]['answerRequired']
-            ]
-            try:
-                response = await gpt_client.chat.completions.create(
-                    model="gpt-4o-mini",
-                    messages=(review_system_messages + [{
-                        "role": "user",
-                        "content": '\n'.join([f'{q}. {a}' for q, a in zip(text_questions, text_answers)])
-                    }]),
-                    web_search=False,
-                    stream=False,
-                    proxy=Web3mtENV.ROTATING_PROXY
-                )
-            except Exception as e:
-                logger.warning(f'{self} | Problem with GPT. {e.args[0]}')
-                await sleep(5, 10, log_info=f'{self}', echo=True)
-                return
-            try:
-                gpt_answers = [
-                    json.loads(answer) for answer in response.choices[0].message.content.lower().strip().split(',')
-                ]
-            except JSONDecodeError as e:
-                raise e
+            text_answers = []
+            if answers:
+                for j, answer in enumerate(answers):
+                    if not questions[j]['answerRequired']:
+                        continue
+                    text_answers.append(answer['answer'])
+                for j in range(retry_count):
+                    try:
+                        response = await gpt_client.chat.completions.create(
+                            model="gpt-4o-mini",
+                            messages=(review_system_messages + [{
+                                "role": "user",
+                                "content": '\n'.join([f'{q}. {a}' for q, a in zip(text_questions, text_answers)])
+                            }]),
+                            web_search=False,
+                            stream=False,
+                            proxy=Web3mtENV.ROTATING_PROXY
+                        )
+                    except Exception as e:
+                        logger.warning(f'{self} | Problem with GPT. {e.args[0]}')
+                        await sleep(5, 10, log_info=f'{self}', echo=True)
+                        return
+                    response = response.choices[0].message.content.lower().strip().split(',')
+                    try:
+                        gpt_answers = [json.loads(answer) for answer in response]
+                        break
+                    except JSONDecodeError as e:
+                        logger.info(f'{self} | GPT return bad answer - {response}. Trying again {i + 1}/{retry_count}')
+            else:
+                gpt_answers = [False] * len(text_questions)
             time = 0
             question_reviews = []
-            for k, (answer, question) in enumerate(zip(gpt_answers, questions)):
-                if i > 0 and k == 0:
+            for j, (answer, question) in enumerate(zip(gpt_answers, questions)):
+                if i > 0 and j == 0:
                     duration = random.randint(min_time_seconds * 1000, (min_time_seconds + 10) * 1000)
                 else:
                     duration = 0
                 duration += random.randint(1000, 5000)
                 time += duration
-                question_reviews.append(dict(
-                    approve=answer, comment="", duration=duration, questionId=question['id']
-                ))
+                question_reviews.append(dict(approve=answer, comment="", duration=duration, questionId=question['id']))
             review['time'] = time
             review['questionReviews'] = question_reviews
-        total_time = sum([review['time'] for review in reviews]) / 1000
-        await sleep(
-            min_time_seconds + total_time if total_time < min_time_seconds else total_time, log_info=f'{self}',
-            echo=True
-        )
+        await sleep(min_time_seconds * len(reviews) + random.randint(5, 20), log_info=f'{self}', echo=True)
         await self.submit_review(hp_reviews, reviews, job_name, job_id)
 
     async def get_questions(self, job_id: int) -> list[dict] | None:
@@ -716,7 +740,10 @@ class SaharaClient(DEX):
                     hpReviewSessionId=honey_pot_session['id'],
                     honeyPotReviewSession=honey_pot_session,
                 ))
-            answers.append([answer for answer in json.loads(question['taskSession']['answer'])])
+            try:
+                answers.append([answer for answer in json.loads(question['taskSession']['answer'])])
+            except JSONDecodeError as e:
+                answers.append(None)
             reviews.append(dict(
                 approve=True,
                 jobId=question['taskSession']['jobId'],
@@ -764,7 +791,7 @@ class SaharaClient(DEX):
                 break
             except RequestsError as e:
                 logger.warning(f'{self} | {e}')
-                payload['captchaToken'] = await solve_captcha(
+                payload['captchaToken'] = await self._solve_captcha(
                     f'https://app.saharalabs.ai/#/individualLabeler/working/{job_id}'
                 )
         if not data['success']:
@@ -773,7 +800,7 @@ class SaharaClient(DEX):
         logger.success(f'{self} | Submitted {len(reviews)} datapoints for reviewing "{task_name}" task')
 
     async def submit_annotating(self, answers: list[dict], hp_answers: list[dict], task_name: str, job_id: int):
-        payload = dict(captchaToken=await solve_captcha(
+        payload = dict(captchaToken=await self._solve_captcha(
             f'https://app.saharalabs.ai/#/individualLabeler/working/{job_id}'
         ), submitAnswers=answers, submitHPAnswers=hp_answers)
         pprint(payload)
@@ -813,24 +840,37 @@ async def points(account: SaharaAccount):
         return client.sp
 
 
-async def points_checker():
-    accounts = await db_helper.get_all_from_table(SaharaAccount)
+async def points_checker(ids: list[int] = None):
+    if not ids:
+        accounts = await db_helper.get_all_from_table(SaharaAccount)
+    else:
+        accounts = await db_helper.get_rows_by_filter(ids, SaharaAccount, SaharaAccount.account_id)
     total = await asyncio.gather(*[points(account) for account in accounts])
     logger.success(f'Total: {sum(total)} SP')
 
 
-async def start(account: SaharaAccount):
-    async with SaharaClient(account) as client:
-        await client.do_tasks()
-        # await client.claim_in_progress_achievements()
-        # await client.mint_in_progress_achievements()
+semaphore = Semaphore(8)
+
+
+async def start(account: SaharaAccount, more_than_one_accounts: bool):
+    async with semaphore:
+        if more_than_one_accounts:
+            await sleep(0, 600, log_info=f'{account}', echo=True)
+        async with SaharaClient(account) as client:
+            if not client:
+                return
+            await client.do_tasks()
+            return client.sp
+            # await client.claim_in_progress_achievements()
+            # await client.mint_in_progress_achievements()
 
 
 async def main():
-    # accounts = await db_helper.get_rows_by_filter([227], SaharaAccount, SaharaAccount.account_id)
+    # accounts = await db_helper.get_rows_by_filter([262], SaharaAccount, SaharaAccount.account_id)
     accounts = await db_helper.get_all_from_table(SaharaAccount)
-    await asyncio.gather(*[start(acc) for acc in accounts])
+    await asyncio.gather(*[start(acc, len(accounts) > 1) for acc in accounts])
 
 
 if __name__ == '__main__':
+    # asyncio.run(points_checker([226, 227, 229, 262, 263, 265, 266, 268, 269, 274, 277]))
     asyncio.run(main())

@@ -42,6 +42,7 @@ if getattr(sys, 'frozen', False):
 else:
     ROOT_DIR = Path(__file__).parent.absolute()
 
+retry_count = 5
 data_path = ROOT_DIR / 'data'
 abi = FileManager.read_json(data_path / 'abi.json')
 contract_address = '0x0a05D8C72Bb1991E526b0357491043FaDeb40EF9'

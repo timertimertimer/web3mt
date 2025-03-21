@@ -9,7 +9,7 @@ from web3mt.consts import DEV
 async def sleep(
         a: float = None, b: float = None, time_delta: timedelta = None, log_info: str = 'Main', echo: bool = DEV
 ) -> None:
-    if a:
+    if a is not None:
         delay = random.uniform(a, b) if b else a
         time_delta = timedelta(seconds=delay)
 

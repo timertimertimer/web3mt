@@ -5,7 +5,7 @@ from email.utils import parsedate_to_datetime
 from mailbox import Message
 
 import chardet
-from web3db import Email
+from web3db import Email, Profile
 
 from web3mt.utils import IMAPClient
 from web3mt.consts import Web3mtENV
@@ -35,7 +35,8 @@ def parse_message(message: Message):
             if content_type == "text/plain" and "attachment" not in content_disposition:
                 try:
                     body = part.get_payload(decode=True)
-                    detected_encoding = chardet.detect(body)["encoding"]
+                    possible_encoding = chardet.detect(body)
+                    detected_encoding = 'utf-8' if possible_encoding['confidence'] < 0.8 else possible_encoding["encoding"]
                     body = body.decode(detected_encoding)
                     if 'Congratulations' in body:
                         pass
@@ -45,7 +46,8 @@ def parse_message(message: Message):
     else:
         try:
             body = message.get_payload(decode=True)
-            detected_encoding = chardet.detect(body)["encoding"]
+            possible_encoding = chardet.detect(body)
+            detected_encoding = 'utf-8' if possible_encoding['confidence'] < 0.8 else possible_encoding["encoding"]
             body = body.decode(detected_encoding)
             print(f"Body:\n{body}")
         except Exception as e:
@@ -72,5 +74,20 @@ async def find_sahara(email: Email):
                 logger.info(f'{client} | Nothing. Message from {message["From"]}, {message["Subject"]}')
 
 
+async def print_last_messages(profile: Profile):
+    access_token = profile.email.access_token
+    async with IMAPClient(profile.email, proxy=profile.proxy.proxy_string) as client:
+        messages = await client.get_inbox_messages()
+    for message in messages:
+        parse_message(message)
+    if access_token != profile.email.access_token:
+        await db.edit(profile.email)
+
+
+async def main():
+    profiles: list[Profile] = await db.get_rows_by_id([1], Profile)
+    await asyncio.gather(*[print_last_messages(profile) for profile in profiles])
+
+
 if __name__ == '__main__':
-    asyncio.run(test())
+    asyncio.run(main())
