@@ -1,14 +1,14 @@
 import asyncio
 import json
 import random
+import anycaptcha
+import httpx
+import pandas as pd
 from asyncio import Semaphore
 from collections import deque
 from datetime import datetime, timezone
 from functools import partialmethod
 from json import JSONDecodeError
-from pprint import pprint
-
-import pandas as pd
 from curl_cffi.requests import RequestsError
 from eth_account import Account
 from eth_utils import to_checksum_address
@@ -16,10 +16,11 @@ from anycaptcha import Solver, Service
 from tabulate import tabulate
 
 from examples.dex.evm.sahara.db import SaharaAccount
+from examples.dex.evm.sahara.models import TextQuestion, SingleChoiceQuestion
 from examples.dex.evm.sahara.utils import (
     recover_public_key, SaharaAI_Testnet, db_helper, abi, contract_address, update_exam_storage, gpt_client,
     answers_storage, exam_system_messages, parse_requirement_bitmap, review_system_messages, Conversation, offset,
-    retry_count
+    retry_count, text_label_type_system_messages
 )
 from examples.dex.evm.sahara.utils import data_path
 from web3mt.consts import Web3mtENV
@@ -118,7 +119,7 @@ class SaharaClient(DEX):
             "accuracy", "dp_left", "earned", "workload_type"
         ]]
         df.rename(columns={
-            'Task': f'{self.account.account_id} | Task',
+            'Task': f'{self.account.account_id} | {str(datetime.now())}',
             'role': 'Role',
             'difficulty': 'Difficulty',
             'submitted': 'Submitted',
@@ -136,13 +137,24 @@ class SaharaClient(DEX):
         print(tabulate(df, headers='keys', tablefmt='grid', showindex=False))
         df.to_csv(data_path / 'stats' / f'{self.account.account_id}.csv', index=False)
 
-    async def _solve_captcha(self, url: str) -> str:
+    async def _solve_captcha(self, url: str) -> str | None:
         solver = Solver(Service.TWOCAPTCHA, Web3mtENV.TWO_CAPTCHA_API_KEY)
         logger.info(f'{self} | Solving captcha')
-        solved = await solver.solve_recaptcha_v2(
-            site_key='6LddMRwqAAAAABCvraXuK1zkUN6CEnRRiTdp9dgT',
-            page_url=url,
-        )
+        for i in range(retry_count):
+            try:
+                solved = await solver.solve_recaptcha_v2(
+                    site_key='6LddMRwqAAAAABCvraXuK1zkUN6CEnRRiTdp9dgT',
+                    page_url=url,
+                )
+                break
+            except (
+                    httpx.HTTPStatusError, anycaptcha.errors.UnableToSolveError, httpx.RemoteProtocolError,
+                    anycaptcha.errors.SolutionWaitTimeout
+            ) as e:
+                logger.warning(f'{self} | Error when solving captcha. {e}. Trying again {i + 1}/{retry_count}')
+                await sleep(10, 30)
+        else:
+            return
         return solved.solution.token
 
     async def login(self) -> bool:
@@ -434,14 +446,17 @@ class SaharaClient(DEX):
             question_id = question['id']
             details = json.loads(question['details'])
             options = details['options']
-            answer, index = await self._get_answer_to_question_index_gpt(question_string, options, exam_id)
+
+            answer, index = await self._get_answer_to_question_index_gpt(
+                SingleChoiceQuestion(question=question_string, options=options), exam_id
+            )
             if not answer:
                 return
             question_and_answers[question_string] = answer
             answers.append(dict(questionId=question_id, answer=index, explanation=""))
         await sleep(15, 30, log_info=f'{self}', echo=True)
         accuracy = await self.submit_exam_answers(exam_id, task_id, answers, task_name)
-        if accuracy and accuracy == 100 and exam_id not in answers_storage:
+        if accuracy and accuracy == 100 and str(exam_id) not in answers_storage:
             answers_storage[exam_id] = question_and_answers
 
     async def join_exam(self, exam_id: int):
@@ -511,6 +526,7 @@ class SaharaClient(DEX):
             datapoints_left = job_data['jobLeftTaskCount']
             workload_type = job_data['workloadType']
             difficulty = job_data['batch']['difficulty']
+            label_type = job_data['batch']['labelType']
             s = (
                     f'{self} | Task "{job_name}". Role: "{role}". '
                     f'{approved_count} approved, {submitted_count} submitted, waiting review count {waiting_review_count}. ' +
@@ -527,17 +543,17 @@ class SaharaClient(DEX):
             if workload_type in [2, 5]:
                 logger.debug(f'{self} | Limit reached for "{job_name}"')
                 continue
-            elif workload_type == 7:
-                logger.debug(f'{self} | Daily limit reached for "{job_name}"')
-                continue
             if role == 'Labeler':
                 min_time_seconds = job_data['batch']['annotatingMinDatapointSecond']
-                if difficulty == 'beginner' and annotate:
+                if difficulty in [
+                    'beginner', 'intermediate',
+                    # 'advanced'
+                ] and annotate:
                     if not datapoints_left:
                         logger.info(f'{self} | No DP for "{job_name}" ({job_id}), role "{role}"')
                     else:
-                        await self.do_label_task(job_id, job_name, min_time_seconds)
-                    q.append(task)
+                        if await self.do_label_task(job_id, job_name, min_time_seconds, label_type) is not False:
+                            q.append(task)
                 else:
                     logger.warning(
                         f'{self} | Skipping task with role "{role}" and difficulty "{difficulty}" for "{job_name}"'
@@ -548,8 +564,8 @@ class SaharaClient(DEX):
                     if not datapoints_left:
                         logger.info(f'{self} | No DP for "{job_name}" ({job_id}), role "{role}"')
                     else:
-                        await self.do_review_task(job_id, job_name, min_time_seconds)
-                    q.append(task)
+                        if await self.do_review_task(job_id, job_name, min_time_seconds) is not False:
+                            q.append(task)
                 else:
                     logger.warning(
                         f'{self} | Skipping task with role "{role}" and difficulty "{difficulty}" for "{job_name}"'
@@ -571,66 +587,127 @@ class SaharaClient(DEX):
         return data
 
     async def _get_answer_to_question_index_gpt(
-            self, question: str, options: list[str], id_: int
+            self, choice_question: SingleChoiceQuestion, id_: int = None, find_in_storage: bool = True,
+            task_description: str = None
     ) -> tuple[str, int] | None:
-        if not (answer := answers_storage.get(str(id_), {}).get(question)):
-            response = await gpt_client.chat.completions.create(
-                model="gpt-4o-mini",
-                messages=(exam_system_messages + [{"role": "user", "content": f'{question}\n' + '\n'.join(options)}]),
-                web_search=False
-            )
-            answer = response.choices[0].message.content.strip()
-        if not answer:
-            logger.error(f'{self} | No answer for question "{question}". Options: {options}')
-            return
-        try:
-            index = options.index(answer)
-        except Exception as e:
-            raise e
-        return answer, index
+        if find_in_storage and (answer := answers_storage.get(str(id_), {}).get(choice_question.question)):
+            try:
+                return answer, choice_question.options.index(answer)
+            except ValueError:
+                pass
+        for i in range(retry_count):
+            try:
+                if task_description:
+                    choice_question_str = f'{task_description} {choice_question}'
+                else:
+                    choice_question_str = f'{choice_question}'
+                response = await gpt_client.chat.completions.create(
+                    model="gpt-4o-mini", web_search=False, stream=False, proxy=Web3mtENV.ROTATING_PROXY,
+                    messages=(exam_system_messages + [{"role": "user", "content": choice_question_str}]),
+                )
+                answer = response.choices[0].message.content.strip()
+                index = choice_question.options.index(answer)
+                return answer, index
+            except Exception as e:
+                logger.warning(f'{self} | {e.args[0]}. Trying again {i + 1}/{retry_count}')
+                await sleep(5, 10, log_info=f'{self}', echo=True)
+        logger.error(f'{self} | No answer for question {choice_question}')
 
-    async def do_label_task(self, job_id: int, job_name: str, min_time_seconds: int):
-        questions = await self.get_questions(job_id)
-        honey_pot_data = await self.get_annotating_answers(job_id, job_name)
-        if not honey_pot_data:
-            await sleep(15, 30, log_info=f'{self}', echo=True)
-            return
-        submit_hp_answers, submit_answers, hp_data, task_descriptions = honey_pot_data
-        content = ''
-        for question in questions:
-            if question['answerRequired']:
-                details = json.loads(question['details'])
-                min_length = details['minLength']
-                max_length = details['maxLength']
-                content += f'{question["question"]} Answer in {min_length}-{max_length} characters\n'
-        if not self.conversations.get(job_id):
+    async def do_label_task(self, job_id: int, job_name: str, min_time_seconds: int, label_type: str):
+        async def do_context_label_task():
             self.conversations[job_id] = Conversation(
-                task_description=task_descriptions[0], first_content=content, offset=offset
+                task_description=current_task_description, questions=text_questions, offset=offset
             )
-        for i in range(len(submit_hp_answers)):
-            answer, index = await self._get_answer_to_question_index_gpt(
-                hp_data[i]['question'], hp_data[i]['options'], job_id
-            )
-            submit_hp_answers[i]['submitAnswer'] = str(index)
+            j = 0
             while True:
                 try:
-                    gpt_answers = (await self.conversations[job_id].get_response()).split('\n\n')
+                    response = await self.conversations[job_id].get_response()
+                    gpt_answers = response.split('\n\n')
                 except Exception as e:
-                    logger.warning(f'{self} | Problem with GPT. {e.args[0]}')
+                    logger.warning(f'{self} | Problem with GPT. {e.args[0]}. Trying again {j + 1}/{retry_count}')
                     await sleep(5, 10, log_info=f'{self}', echo=True)
                     return
-                if len(gpt_answers) != len(questions):
+                if len(gpt_answers) != len(text_questions):
                     self.conversations[job_id] = Conversation(
-                        task_description=task_descriptions[0], first_content=content, offset=offset
+                        task_description=current_task_description, questions=text_questions, offset=offset
                     )
                 else:
                     break
-            submit_answers[i]['submitAnswer']['answers'] = [
-                dict(answer=gpt_answers[k], explanation='', questionId=questions[k]['id']) for k in
-                range(len(questions))
+            submit_answers[i]['submitAnswer']['answers'] = submit_answers[i]['submitAnswer'].get('answers', []) + [
+                dict(answer=gpt_answers[k], explanation='', questionId=required_questions[k]['id'])
+                for k in range(len(required_questions))
             ]
+
+        async def do_text_label_task():
+            choice_question = choice_questions[0]
+            for j in range(retry_count):
+                try:
+                    response = await gpt_client.chat.completions.create(
+                        model="gpt-4o-mini", web_search=False, stream=False, proxy=Web3mtENV.ROTATING_PROXY,
+                        messages=(text_label_type_system_messages + [{
+                            "role": "user",
+                            "content": f'{current_task_description}\n{choice_question}\n\n' + '\n'.join([
+                                f'{q.question} Answer in {q.min_length}-{q.max_length} characters'
+                                for q in text_questions
+                            ])}])
+                    )
+                    gpt_answers = response.choices[0].message.content.strip().split('\n\n')
+                    choice_answer = gpt_answers[0].strip().removesuffix('.')
+                    index = choice_question.options.index(choice_answer)
+                    text_answer = ' '.join(gpt_answers[1:]).strip()
+                    if len(text_answer) < 100:
+                        raise ValueError(f'Text answer is too short - {len(text_answer)} characters')
+                    break
+                except Exception as e:
+                    logger.warning(f'{self} | Problem with GPT. {e.args[0]}. Trying again {j + 1}/{retry_count}')
+                    await sleep(5, 10, log_info=f'{self}', echo=True)
+            submit_answers[i]['submitAnswer']['answers'] = []
+            for question in required_questions:
+                if question['questionType'] == 'text':
+                    submit_answers[i]['submitAnswer']['answers'].append(
+                        dict(answer=text_answer, explanation='', questionId=question['id']))
+                elif question['questionType'] == 'single_choice':
+                    submit_answers[i]['submitAnswer']['answers'].append(
+                        dict(answer=str(index), explanation='', questionId=question['id']))
+
+        questions = await self.get_questions(job_id)
+        honey_pot_data = await self.get_annotating_answers(job_id, job_name)
+        if not honey_pot_data:
+            return honey_pot_data
+        submit_hp_answers, submit_answers, hp_data, task_descriptions = honey_pot_data
+        required_questions = [question for question in questions if question['answerRequired']]
+        text_questions = []
+        choice_questions = []
+        for question in required_questions:
+            question_type = question['questionType']
+            question_string = question['question']
+            details = json.loads(question['details'])
+            if question_type == 'text':
+                min_length = details['minLength']
+                max_length = details['maxLength']
+                text_questions.append(
+                    TextQuestion(question=question_string, min_length=min_length, max_length=max_length)
+                )
+            elif question_type == 'single_choice':
+                options = details['options']
+                choice_questions.append(SingleChoiceQuestion(question=question_string, options=options))
+
+        if len(choice_questions) > 1:  # если в одном блоке вопросов несколько вопросов с вариантами ответов
+            pass
+        for i in range(len(submit_hp_answers)):  # block of answers
+            if label_type == 'context':
+                current_task_description = task_descriptions[0]
+                await do_context_label_task()
+            elif label_type == 'text':
+                current_task_description = task_descriptions[i]
+                await do_text_label_task()
+            else:
+                ...
+            hp_question = SingleChoiceQuestion(question=hp_data[i]['question'], options=hp_data[i]['options'])
+            answer, index = await self._get_answer_to_question_index_gpt(hp_question, job_id)
+            submit_hp_answers[i]['submitAnswer'] = str(index)
             time = 0
-            for k in range(len(questions)):
+            for k in range(len(required_questions)):
                 if i > 0 and k == 0:
                     duration = random.randint(min_time_seconds * 1000, (min_time_seconds + 10) * 1000)
                 else:
@@ -645,43 +722,36 @@ class SaharaClient(DEX):
         questions = await self.get_questions(job_id)
         answers_data = await self.get_review_answers(job_id, job_name)
         if not answers_data:
-            await sleep(15, 30, log_info=f'{self}', echo=True)
-            return
+            return answers_data
         hp_reviews, answers_set, reviews = answers_data
         text_questions = []
-        for question in questions:
-            if not question['answerRequired']:
-                continue
+        required_questions = [question for question in questions if question['answerRequired']]
+        for question in required_questions:
             text_questions.append(question['question'])
         for i, (answers, review) in enumerate(zip(answers_set, reviews)):
             text_answers = []
             if answers:
                 for j, answer in enumerate(answers):
-                    if not questions[j]['answerRequired']:
-                        continue
                     text_answers.append(answer['answer'])
                 for j in range(retry_count):
                     try:
                         response = await gpt_client.chat.completions.create(
-                            model="gpt-4o-mini",
+                            model="gpt-4o-mini", web_search=False, stream=False, proxy=Web3mtENV.ROTATING_PROXY,
                             messages=(review_system_messages + [{
                                 "role": "user",
                                 "content": '\n'.join([f'{q}. {a}' for q, a in zip(text_questions, text_answers)])
                             }]),
-                            web_search=False,
-                            stream=False,
-                            proxy=Web3mtENV.ROTATING_PROXY
                         )
                     except Exception as e:
-                        logger.warning(f'{self} | Problem with GPT. {e.args[0]}')
+                        logger.warning(f'{self} | Problem with GPT. {e.args[0]}. Trying again {j + 1}/{retry_count}')
                         await sleep(5, 10, log_info=f'{self}', echo=True)
-                        return
+                        continue
                     response = response.choices[0].message.content.lower().strip().split(',')
                     try:
                         gpt_answers = [json.loads(answer) for answer in response]
                         break
                     except JSONDecodeError as e:
-                        logger.info(f'{self} | GPT return bad answer - {response}. Trying again {i + 1}/{retry_count}')
+                        logger.info(f'{self} | GPT return bad answer - {response}. Trying again {j + 1}/{retry_count}')
             else:
                 gpt_answers = [False] * len(text_questions)
             time = 0
@@ -709,23 +779,23 @@ class SaharaClient(DEX):
             return
         data = data[0]
         questions = data['tasks'][0]['questions']
-        for question in questions:
-            if not question['answerRequired']:
-                pass
         return questions
 
-    async def get_review_answers(self, job_id: int, task_name: str) -> tuple[list, list, list] | None:
+    async def get_review_answers(self, job_id: int, task_name: str) -> tuple[list, list, list] | bool | None:
         try:
             _, data = await self.session.get(f'{self.API_URL}/jobs/{job_id}/take-review-jobs/for-individuals')
         except RequestsError as e:
             if 'User workloads exceeded' in str(e):
-                logger.info(f'{self} | Limit exceeded for "{task_name}" task')
-            return
+                logger.debug(f'{self} | Limit reached for "{task_name}" task')
+                return False
+            else:
+                logger.error(f'{self} | {e}')
+                return
         if not data['success']:
             logger.error(f'{self} | Something went wrong: {data}')
             return
         if not (data := data.get('data')):
-            logger.warning(f'{self} | No review jobs for "{task_name}" task')
+            logger.info(f'{self} | No review jobs for "{task_name}" task')
             return
         hp_reviews = []
         reviews = []
@@ -734,12 +804,28 @@ class SaharaClient(DEX):
             honey_pot_data = question['honeyPotData']
             if honey_pot_data:
                 honey_pot_session: dict = honey_pot_data['hpReviewSession']
-                honey_pot_answer: bool = honey_pot_data['question']['answerCorrect']
-                hp_reviews.append(dict(
-                    reviewResult=honey_pot_answer,
-                    hpReviewSessionId=honey_pot_session['id'],
-                    honeyPotReviewSession=honey_pot_session,
-                ))
+                question_type = honey_pot_data['question']['questionType']
+                if question_type == 'text':
+                    hp_reviews.append(dict(
+                        reviewResult=honey_pot_data['question']['answerCorrect'],
+                        hpReviewSessionId=honey_pot_session['id'],
+                        honeyPotReviewSession=honey_pot_session,
+                    ))
+                elif question_type == 'single_choice':
+                    details = json.loads(honey_pot_data['question']['details'])
+                    options = details['options']
+                    answer_index = int(honey_pot_data['question']['answer'])
+                    question_string = honey_pot_data['question']['question']
+                    answer, index = await self._get_answer_to_question_index_gpt(
+                        SingleChoiceQuestion(question=question_string, options=options)
+                    )
+                    hp_reviews.append(dict(
+                        reviewResult=index == answer_index,
+                        hpReviewSessionId=honey_pot_session['id'],
+                        honeyPotReviewSession=honey_pot_session,
+                    ))
+                else:
+                    return
             try:
                 answers.append([answer for answer in json.loads(question['taskSession']['answer'])])
             except JSONDecodeError as e:
@@ -752,18 +838,18 @@ class SaharaClient(DEX):
             ))
         return hp_reviews, answers, reviews
 
-    async def get_annotating_answers(self, job_id: int, task_name: str) -> tuple[list, list, list, list] | None:
+    async def get_annotating_answers(self, job_id: int, task_name: str) -> tuple[list, list, list, list] | bool | None:
         try:
             _, data = await self.session.get(f'{self.API_URL}/jobs/{job_id}/take-job/for-individuals')
         except RequestsError as e:
             if 'User workloads exceeded' in str(e):
-                logger.info(f'{self} | Limit exceeded for "{task_name}" task')
-            return
+                logger.debug(f'{self} | Limit reached for "{task_name}" task')
+            return False
         if not data['success']:
             logger.error(f'{self} | Something went wrong: {data}')
             return
         if not (data := data.get('data')):
-            logger.warning(f'{self} | No review jobs for "{task_name}" task')
+            logger.info(f'{self} | No annotating jobs for "{task_name}" task')
             return
         submit_hp_answers = []
         submit_answers = []
@@ -785,7 +871,7 @@ class SaharaClient(DEX):
 
     async def submit_review(self, hp_reviews: list[dict], reviews: list[dict], task_name: str, job_id: int):
         payload = dict(captchaToken="", hpReviews=hp_reviews, reviews=reviews)
-        while True:
+        for i in range(retry_count):
             try:
                 _, data = await self.session.post(f'{self.API_URL}/review-sessions/submit-revisions', json=payload)
                 break
@@ -803,7 +889,7 @@ class SaharaClient(DEX):
         payload = dict(captchaToken=await self._solve_captcha(
             f'https://app.saharalabs.ai/#/individualLabeler/working/{job_id}'
         ), submitAnswers=answers, submitHPAnswers=hp_answers)
-        pprint(payload)
+        logger.info(payload)
         try:
             _, data = await self.session.post(f'{self.API_URL}/task-sessions/submit-answers', json=payload)
         except RequestsError as e:
@@ -866,11 +952,15 @@ async def start(account: SaharaAccount, more_than_one_accounts: bool):
 
 
 async def main():
-    # accounts = await db_helper.get_rows_by_filter([262], SaharaAccount, SaharaAccount.account_id)
-    accounts = await db_helper.get_all_from_table(SaharaAccount)
+    accounts = await db_helper.get_rows_by_filter(a_1 + a_2 + a_3, SaharaAccount, SaharaAccount.account_id)
+    # accounts: list[SaharaAccount] = await db_helper.get_all_from_table(SaharaAccount)
+    random.shuffle(accounts)
     await asyncio.gather(*[start(acc, len(accounts) > 1) for acc in accounts])
 
 
 if __name__ == '__main__':
-    # asyncio.run(points_checker([226, 227, 229, 262, 263, 265, 266, 268, 269, 274, 277]))
+    a_1 = [226, 227, 229, 262, 263, 265, 266, 268, 269, 274, 277]
+    a_2 = [1, 42, 43, 53, 54, 55, 56]
+    a_3 = [1111, 111, 115, 142, 144, 192, 197, 201, 203, 221, 225]
+    # asyncio.run(points_checker(a_3))
     asyncio.run(main())

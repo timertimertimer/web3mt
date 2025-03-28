@@ -5,10 +5,9 @@ import aiofiles
 from eth_keys.datatypes import Signature
 from eth_utils import keccak, decode_hex, encode_hex
 from g4f import AsyncClient
-from g4f.Provider import DDG, Free2GPT, GizAI
-from g4f.providers.retry_provider import RetryProvider
 from pathlib import Path
 
+from examples.dex.evm.sahara.models import TextQuestion
 from web3mt.consts import Web3mtENV
 from web3mt.onchain.evm.models import Chain
 from web3mt.utils import FileManager, my_logger as logger
@@ -50,7 +49,7 @@ CONNECTION_STRING = f'sqlite+aiosqlite:///{data_path}/sahara.db'
 db_helper = create_db_instance(CONNECTION_STRING)
 
 answers_storage = json.load(open(data_path / 'answers_storage.json'))
-gpt_client = AsyncClient(provider=RetryProvider([DDG, Free2GPT, GizAI], shuffle=True))
+gpt_client = AsyncClient()
 exam_system_messages = [{
     "role": "system",
     "content": (
@@ -77,7 +76,19 @@ annotate_system_messages = [{
         "You need to answer in a non-standard, very unique way. Cut out typical, popular answers. Think carefully. "
         "Answer like a real person. The most important thing is not to repeat previous answers. "
         "Separate the answers to the questions with a blank line between them. "
+        "Give as many answers as questions you are given. "
         "WRITE ONLY ANSWERS with nothing more and don't repeat questions in answers"
+    )
+}]
+text_label_type_system_messages = [{
+    "role": "system",
+    "content": (
+        "You are an AI assistant created to annotate text. You will be given a tasks with a description of it. "
+        "You will also be given a multiple choice question. "
+        "First, choose an option, and then give a detailed answer to the next question on a new line. "
+        "So separate chosen option and answer with a blank line. "
+        "Answer like a real person. The most important thing is not to repeat previous answers. "
+        "You need to answer in a non-standard, very unique way. Cut out typical, popular answers. Think carefully. "
     )
 }]
 offset = 5
@@ -100,10 +111,16 @@ def parse_requirement_bitmap(requirement_bitmap: int, onchain_requirement_bitmap
 
 
 class Conversation:
-    def __init__(self, task_description: str, first_content: str, offset: int = 0):
+    def __init__(self, task_description: str, questions: list[TextQuestion], offset: int = 0):
         self.client = AsyncClient()
         system = f'{annotate_system_messages[0]["content"]}.\nTask: {task_description}'
-        self.history = [{'role': 'system', 'content': system}, {'role': 'system', 'content': first_content}]
+        self.history = [
+            {'role': 'system', 'content': system},
+            {
+                'role': 'system', 'content':
+                '\n'.join([f'{q.question} Answer in {q.min_length}-{q.max_length} characters' for q in questions])
+            }
+        ]
         self.history_set_count = len(self.history)
         self.offset = offset
         self.initialized = False
@@ -137,7 +154,8 @@ class Conversation:
             await self._generate_initial_messages()
         if user_message:
             self.add_message("user", user_message)
-        return await self._make_request()
+        response = await self._make_request()
+        return response
 
 
 async def test_gpt_annotate():
