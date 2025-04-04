@@ -9,7 +9,7 @@ from web3mt.models import Coin
 from web3mt.offchain.coingecko import CoinGecko
 from web3mt.onchain.evm.client import ProfileClient, BaseEVMClient
 from web3mt.onchain.evm.models import *
-from web3mt.utils import CustomAsyncSession, ProfileSession
+from web3mt.utils import CustomAsyncSession, ProfileSession, my_logger as logger
 
 
 class PriceImpactException(Exception):
@@ -32,10 +32,12 @@ class DEX(ABC):
         return self.__str__()
 
     async def __aenter__(self):
+        logger.debug(f'{self} | Session started')
         return self
 
     async def __aexit__(self, exc_type, exc_val, exc_tb):
         await self.session.close()
+        logger.debug(f'{self} | Session closed')
 
     async def get_weth_address(self, chain: Chain = None) -> str:
         chain = chain or self.client.chain

@@ -39,11 +39,33 @@ class Bybit(CEX):
     URL = f'https://api.bybit.com/v{API_VERSION}'
     NAME = 'Bybit'
 
+    async def get_server_timestamp(self) -> str:
+        _, data = await self.session.get(f'{self.URL}/market/time')
+        return str(data['time'])
+
+    async def get_headers(self, path: str, method: str = 'GET', recv_window: int = 10000, **kwargs):
+        timestamp = await self.get_server_timestamp() or str(int(time.time() * 10 ** 3))
+        params = kwargs.get('params', {})
+        params = '&'.join([f'{key}={value}' for key, value in params.items()])
+        prehash_string = (
+                timestamp + self.profile.bybit.api_key + str(recv_window) + str(params) + kwargs.get('data', '')
+        )
+        signature = hmac.new(
+            self.profile.bybit.api_secret.encode('utf-8'), prehash_string.encode('utf-8'), sha256
+        ).hexdigest()
+        return {
+            'Content-Type': 'application/json',
+            'X-BAPI-API-KEY': self.profile.bybit.api_key,
+            'X-BAPI-SIGN': signature,
+            'X-BAPI-TIMESTAMP': timestamp,
+            'X-BAPI-RECV-WINDOW': str(recv_window)
+        }
+
     async def request(self, method: str, path: str, **kwargs):
         without_headers = kwargs.pop('without_headers', False)
         response, data = await self.session.request(
             method, f'{self.URL}/{path}',
-            headers={} if without_headers else self.get_headers(path, method, **kwargs), **kwargs
+            headers={} if without_headers else await self.get_headers(path, method, **kwargs), **kwargs
         )
         if not data['result']:
             my_logger.error(f'{self.log_info} | {data["retMsg"]}')
@@ -57,24 +79,6 @@ class Bybit(CEX):
     patch = partialmethod(request, "PATCH")
     delete = partialmethod(request, "DELETE")
     options = partialmethod(request, "OPTIONS")
-
-    def get_headers(self, path: str, method: str = 'GET', recv_window: int = 10000, **kwargs):
-        timestamp = str(int(time.time() * 10 ** 3))
-        params = kwargs.get('params', {})
-        params = '&'.join([f'{key}={value}' for key, value in params.items()])
-        prehash_string = (
-                timestamp + self.profile.bybit.api_key + str(recv_window) + str(params) + kwargs.get('data','')
-        )
-        signature = hmac.new(
-            self.profile.bybit.api_secret.encode('utf-8'), prehash_string.encode('utf-8'), sha256
-        ).hexdigest()
-        return {
-            'Content-Type': 'application/json',
-            'X-BAPI-API-KEY': self.profile.bybit.api_key,
-            'X-BAPI-SIGN': signature,
-            'X-BAPI-TIMESTAMP': timestamp,
-            'X-BAPI-RECV-WINDOW': str(recv_window)
-        }
 
     async def get_coin_price(self, coin: str | Coin = 'ETH') -> Decimal:
         if coin.price:
@@ -96,7 +100,7 @@ class Bybit(CEX):
 
     async def _get_balance(self, account: Account, coins: list[Asset | Coin | str] = None) -> list[Asset]:
         _, data = await self.get(
-            'asset/transfer/query-account-coins-balance',
+            'account/wallet-balance' if account.ACCOUNT_ID == 'UNIFIED' else 'asset/transfer/query-account-coins-balance',
             params=(
                     {'accountType': account.ACCOUNT_ID} |
                     ({'coin': create_currencies_with_comma_string(coins)} if coins else {}) |

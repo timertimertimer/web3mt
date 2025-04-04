@@ -67,7 +67,7 @@ class OKX(CEX):
                 timestamp + method.upper() + f'/api/v{OKX.API_VERSION}/' + path + params + str(kwargs.get('data', ''))
         )
         secret_key_bytes = (
-            self.profile.okx_api_secret if self.profile and self.profile.okx_api_secret
+            self.profile.okx.api_secret if self.profile and self.profile.okx.api_secret
             else Web3mtENV.OKX_API_SECRET
         ).encode('utf-8')
         signature = hmac.new(secret_key_bytes, prehash_string.encode('utf-8'), sha256).digest()
@@ -75,12 +75,12 @@ class OKX(CEX):
         return {
             "Content-Type": "application/json",
             'OK-ACCESS-KEY': (
-                self.profile.okx_api_key if self.profile and self.profile.okx_api_key else Web3mtENV.OKX_API_KEY
+                self.profile.okx.api_key if self.profile and self.profile.okx.api_key else Web3mtENV.OKX_API_KEY
             ),
             'OK-ACCESS-SIGN': encoded_signature,
             'OK-ACCESS-TIMESTAMP': timestamp,
             'OK-ACCESS-PASSPHRASE': (
-                self.profile.okx_api_passphrase if self.profile and self.profile.okx_api_passphrase
+                self.profile.okx.api_passphrase if self.profile and self.profile.okx.api_passphrase
                 else Web3mtENV.OKX_API_PASSPHRASE
             )
         }

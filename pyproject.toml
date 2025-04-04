@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "web3mt"
-version = "0.1.12"
+version = "0.1.16"
 description = "Web3 multitool"
 authors = ["timertimertimer <timerkhan2002@gmail.com>"]
 repository = "https://github.com/timertimertimer/web3mt"

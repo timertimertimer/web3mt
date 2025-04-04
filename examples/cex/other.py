@@ -6,23 +6,23 @@ from web3mt.cex.bybit.bybit import Bybit
 from web3mt.cex.okx.okx import OKX
 from web3mt.consts import Web3mtENV
 from web3mt.onchain.evm.models import Ethereum
-from web3mt.utils import my_logger
+from web3mt.utils import my_logger as logger
 
 db = DBHelper(Web3mtENV.LOCAL_CONNECTION_STRING)
 
 
 async def get_total_balance():
     await Ethereum.native_token.update_price()
-    my_logger.debug(f"1 ETH = {Ethereum.native_token.price}$")
-    profiles = await db.get_all_from_table(Profile)
+    logger.debug(f"1 ETH = {Ethereum.native_token.price}$")
+    profiles: list[Profile] = await db.get_all_from_table(Profile)
     funcs = []
     for profile in profiles:
-        if profile.bybit_api_key:
+        if profile.bybit and profile.bybit.api_key:
             funcs.append(Bybit(profile).get_total_balance())
-        if profile.okx_api_key:
+        if profile.okx and profile.okx.api_key:
             funcs.append(OKX(profile).get_total_balance())
     res = await asyncio.gather(*funcs)
-    my_logger.debug(f"CEXs: {sum(res):.2f}$")
+    logger.debug(f"CEXs: {sum(res):.2f}$")
 
 
 async def collect_on_main():
@@ -30,4 +30,4 @@ async def collect_on_main():
 
 
 if __name__ == "__main__":
-    asyncio.run(collect_on_main())
+    asyncio.run(get_total_balance())

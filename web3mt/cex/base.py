@@ -48,7 +48,7 @@ class CEX(ABC):
                 headers={} if without_headers else self.get_headers(path, method, **kwargs), **kwargs
             )
         except RequestsError as e:
-            my_logger.error()
+            my_logger.error(e)
             raise e
 
     head = partialmethod(request, "HEAD")

@@ -34,6 +34,7 @@ Account.enable_unaudited_hdwallet_features()
 class SaharaClient(DEX):
     MAIN_DOMAIN = 'https://app.saharalabs.ai'
     API_URL = f'{MAIN_DOMAIN}/api'
+    GRAPHQL_URL = 'https://graphql.saharaa.info/subgraphs/name/DataService'
     CURRENT_SEASON_NAME = 'Data Services - Season 3'
 
     def __init__(self, account: SaharaAccount, save_session: bool = True):
@@ -65,17 +66,20 @@ class SaharaClient(DEX):
         return self.__str__()
 
     async def __aenter__(self):
+        await super().__aenter__()
         if not await self.profile():
             return
         await self.all_seasons_points()
         return self
 
     async def __aexit__(self, exc_type, exc_val, exc_tb):
+        if exc_val:
+            logger.error(f'{self} | {exc_val}')
         if self.tasks_stat:
             self._show_and_save_stats()
-        await self.session.close()
         if self.save_session:
             await db_helper.edit(self.account)
+        await super().__aexit__(exc_type, exc_val, exc_tb)
 
     @property
     def sp(self):
@@ -149,12 +153,13 @@ class SaharaClient(DEX):
                 break
             except (
                     httpx.HTTPStatusError, anycaptcha.errors.UnableToSolveError, httpx.RemoteProtocolError,
-                    anycaptcha.errors.SolutionWaitTimeout
+                    anycaptcha.errors.SolutionWaitTimeout, httpx.ConnectTimeout, httpx.ConnectError, httpx.ReadError
             ) as e:
                 logger.warning(f'{self} | Error when solving captcha. {e}. Trying again {i + 1}/{retry_count}')
                 await sleep(10, 30)
         else:
             return
+        logger.info(f'{self} | Captcha solved')
         return solved.solution.token
 
     async def login(self) -> bool:
@@ -527,22 +532,32 @@ class SaharaClient(DEX):
             workload_type = job_data['workloadType']
             difficulty = job_data['batch']['difficulty']
             label_type = job_data['batch']['labelType']
+            if workload_type == 5:
+                additional_info = '. Limit reached'
+            elif workload_type in [9, 10]:
+                additional_info = '. This account is unable to claim data points from this task'
+            else:
+                additional_info = ''
             s = (
                     f'{self} | Task "{job_name}". Role: "{role}". '
-                    f'{approved_count} approved, {submitted_count} submitted, waiting review count {waiting_review_count}. ' +
+                    f'{approved_count} approved, {submitted_count} submitted, {waiting_review_count} waiting review count. ' +
                     (f'Accuracy: {accuracy:.2f}%. ' if accuracy else '') +
                     f'SP/DP: {sp_per_dp}. Earned: {earned} SP. Datapoints left: {datapoints_left}' +
-                    (f'. Limit reached' if workload_type == 5 else '')
+                    additional_info
             )
             self.tasks_stat[job_name] = {
                 'role': role, 'difficulty': difficulty, 'workload_type': workload_type,
                 'approved': approved_count, 'submitted': submitted_count, 'waiting_review': waiting_review_count,
                 'accuracy': accuracy, 'earned': earned, 'dp_left': datapoints_left, 'sp_per_dp': sp_per_dp
             }
-            logger.debug(s) if workload_type == 5 else logger.info(s)
-            if workload_type in [2, 5]:
-                logger.debug(f'{self} | Limit reached for "{job_name}"')
+            if workload_type == 5:
+                logger.debug(s)
                 continue
+            elif workload_type in [9, 10]:
+                logger.warning(s)
+                continue
+            else:
+                logger.info(s)
             if role == 'Labeler':
                 min_time_seconds = job_data['batch']['annotatingMinDatapointSecond']
                 if difficulty in [
@@ -551,11 +566,12 @@ class SaharaClient(DEX):
                 ] and annotate:
                     if not datapoints_left:
                         logger.info(f'{self} | No DP for "{job_name}" ({job_id}), role "{role}"')
+                        q.append(task)
                     else:
                         if await self.do_label_task(job_id, job_name, min_time_seconds, label_type) is not False:
                             q.append(task)
                 else:
-                    logger.warning(
+                    logger.info(
                         f'{self} | Skipping task with role "{role}" and difficulty "{difficulty}" for "{job_name}"'
                     )
             elif role == 'Reviewer':
@@ -563,11 +579,12 @@ class SaharaClient(DEX):
                 if review:
                     if not datapoints_left:
                         logger.info(f'{self} | No DP for "{job_name}" ({job_id}), role "{role}"')
+                        q.append(task)
                     else:
                         if await self.do_review_task(job_id, job_name, min_time_seconds) is not False:
                             q.append(task)
                 else:
-                    logger.warning(
+                    logger.info(
                         f'{self} | Skipping task with role "{role}" and difficulty "{difficulty}" for "{job_name}"'
                     )
             await sleep(15, 30, log_info=f'{self}', echo=True)
@@ -595,7 +612,7 @@ class SaharaClient(DEX):
                 return answer, choice_question.options.index(answer)
             except ValueError:
                 pass
-        for i in range(retry_count):
+        for i in range(retry_count * 3):
             try:
                 if task_description:
                     choice_question_str = f'{task_description} {choice_question}'
@@ -786,7 +803,7 @@ class SaharaClient(DEX):
             _, data = await self.session.get(f'{self.API_URL}/jobs/{job_id}/take-review-jobs/for-individuals')
         except RequestsError as e:
             if 'User workloads exceeded' in str(e):
-                logger.debug(f'{self} | Limit reached for "{task_name}" task')
+                logger.debug(f'{self} | Limit reached for "{task_name}" (Reviewer) task')
                 return False
             else:
                 logger.error(f'{self} | {e}')
@@ -843,7 +860,7 @@ class SaharaClient(DEX):
             _, data = await self.session.get(f'{self.API_URL}/jobs/{job_id}/take-job/for-individuals')
         except RequestsError as e:
             if 'User workloads exceeded' in str(e):
-                logger.debug(f'{self} | Limit reached for "{task_name}" task')
+                logger.debug(f'{self} | Limit reached for "{task_name}" (Labeler) task')
             return False
         if not data['success']:
             logger.error(f'{self} | Something went wrong: {data}')
@@ -935,11 +952,11 @@ async def points_checker(ids: list[int] = None):
     logger.success(f'Total: {sum(total)} SP')
 
 
-semaphore = Semaphore(8)
+# semaphore = Semaphore(8)
 
 
 async def start(account: SaharaAccount, more_than_one_accounts: bool):
-    async with semaphore:
+    # async with semaphore:
         if more_than_one_accounts:
             await sleep(0, 600, log_info=f'{account}', echo=True)
         async with SaharaClient(account) as client:
@@ -962,5 +979,5 @@ if __name__ == '__main__':
     a_1 = [226, 227, 229, 262, 263, 265, 266, 268, 269, 274, 277]
     a_2 = [1, 42, 43, 53, 54, 55, 56]
     a_3 = [1111, 111, 115, 142, 144, 192, 197, 201, 203, 221, 225]
-    # asyncio.run(points_checker(a_3))
+    # asyncio.run(points_checker(a_1 + a_2 + a_3))
     asyncio.run(main())

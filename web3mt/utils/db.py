@@ -28,4 +28,4 @@ async def update_shared_proxies(db_helper: DBHelper):
 
 
 if __name__ == '__main__':
-    asyncio.run(update_shared_proxies(DBHelper(Web3mtENV.REMOTE_CONNECTION_STRING)))
+    asyncio.run(update_shared_proxies(create_db_instance()))
