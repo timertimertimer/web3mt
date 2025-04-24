@@ -1,10 +1,16 @@
+import os
 import sys
+import tempfile
 from loguru import logger
 from pathlib import Path
 
-MAIN_DIR = Path(__file__).parent.parent.parent / 'logs'
+
+if sys.platform == 'win32':
+    MAIN_DIR = Path(os.getenv('LOCALAPPDATA', tempfile.gettempdir())) / 'web3mt' / 'logs'
+else:
+    MAIN_DIR = Path(os.getenv('XDG_STATE_HOME', '/var/log')) / 'web3mt' / 'logs'
 if not Path.exists(MAIN_DIR):
-    MAIN_DIR.mkdir()
+    MAIN_DIR.mkdir(parents=True, exist_ok=True)
 
 
 class Logger:
@@ -41,4 +47,5 @@ class Logger:
 
 
 my_logger = Logger()
+my_logger.info(f"Logs are saved in {MAIN_DIR}")
 __all__ = ["my_logger"]

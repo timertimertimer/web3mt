@@ -1,16 +1,27 @@
 import asyncio
 import json
+import random
 import sys
+from datetime import datetime
+
 import aiofiles
+import anycaptcha
+import httpx
+import pandas as pd
 from eth_keys.datatypes import Signature
 from eth_utils import keccak, decode_hex, encode_hex
 from g4f import AsyncClient
 from pathlib import Path
 
+from tabulate import tabulate
+from web3db import Proxy
+from anycaptcha import Solver, Service
+
+from examples.dex.evm.sahara.config import retry_count
 from examples.dex.evm.sahara.models import TextQuestion
 from web3mt.consts import Web3mtENV
 from web3mt.onchain.evm.models import Chain
-from web3mt.utils import FileManager, my_logger as logger
+from web3mt.utils import FileManager, my_logger as logger, sleep
 from web3mt.utils.db import create_db_instance
 
 
@@ -41,10 +52,9 @@ if getattr(sys, 'frozen', False):
 else:
     ROOT_DIR = Path(__file__).parent.absolute()
 
-retry_count = 5
 data_path = ROOT_DIR / 'data'
 abi = FileManager.read_json(data_path / 'abi.json')
-contract_address = '0x0a05D8C72Bb1991E526b0357491043FaDeb40EF9'
+contract_address = '0x18ef4FafAc18bDc6E37b6B025c6E8B84BcC51665'
 CONNECTION_STRING = f'sqlite+aiosqlite:///{data_path}/sahara.db'
 db_helper = create_db_instance(CONNECTION_STRING)
 
@@ -91,7 +101,7 @@ text_label_type_system_messages = [{
         "You need to answer in a non-standard, very unique way. Cut out typical, popular answers. Think carefully. "
     )
 }]
-offset = 5
+queries_folder = data_path / 'queries'
 
 
 async def update_exam_storage():
@@ -111,7 +121,13 @@ def parse_requirement_bitmap(requirement_bitmap: int, onchain_requirement_bitmap
 
 
 class Conversation:
-    def __init__(self, task_description: str, questions: list[TextQuestion], offset: int = 0):
+    def __init__(
+            self, client_id: int, task: str, task_description: str, questions: list[TextQuestion], offset: int = 0,
+            use_rotating_proxy_for_gpt: bool = True
+    ):
+        self._use_rotating_proxy_for_gpt = use_rotating_proxy_for_gpt
+        self.id = client_id
+        self.task = task
         self.client = AsyncClient()
         system = f'{annotate_system_messages[0]["content"]}.\nTask: {task_description}'
         self.history = [
@@ -129,15 +145,28 @@ class Conversation:
         self.history.append({"role": role, "content": content})
 
     async def _make_request(self):
-        response = await self.client.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=self.history,
-            web_search=False,
-            proxy=Web3mtENV.ROTATING_PROXY
-        )
+        for j in range(retry_count):
+            try:
+                response = await self.client.chat.completions.create(
+                    model="gpt-4o-mini",
+                    messages=self.history,
+                    web_search=False,
+                    proxy=(
+                        Web3mtENV.ROTATING_PROXY
+                        if self._use_rotating_proxy_for_gpt
+                        else random.choice(all_proxies).proxy_string
+                    )
+                )
+                break
+            except Exception as e:
+                logger.warning(f'{self} | Problem with GPT. {e.args[0]}. Trying again {j + 1}/{retry_count}')
+                await sleep(5, 10, echo=True)
+        else:
+            logger.error(f'{self} | GPT failed to respond after {retry_count} attempts')
+            return
         assistant_response = response.choices[0].message.content
         logger.info(
-            f'Response №{len(self.history) - self.history_set_count + 1}, provider - {response.provider}:\n'
+            f'{self.id} | {self.task} | Response №{len(self.history) - self.history_set_count + 1}, provider - {response.provider}:\n'
             f'{assistant_response}'
         )
         self.history.append({"role": "assistant", "content": assistant_response})
@@ -186,6 +215,78 @@ async def test_gpt_annotate():
         if len(response.split('\n\n')) != len(questions):
             conversation = Conversation(task_description, content, 5)
 
+
+def classify_workload(workload_type: int) -> str:
+    if workload_type in [9, 10]:
+        return 'This account is unable to claim data points from this task.'
+    elif workload_type in [2, 5, 7]:
+        return 'Daily limit reached'
+    elif workload_type == 1:
+        return 'Task limit reached'
+    else:
+        return 'HAVE TASKS'
+
+
+def show_and_save_stats(account_id, stats):
+    df = pd.DataFrame.from_dict(stats, orient='index').reset_index()
+    df.rename(columns={'index': 'Task'}, inplace=True)
+    df = df[[
+        "Task", "role", "difficulty", "submitted", "waiting_review", "approved", 'sp_per_dp',
+        "accuracy", "dp_left", "earned", "workload_type"
+    ]]
+    df.rename(columns={
+        'Task': f'{account_id} | {str(datetime.now())}',
+        'role': 'Role',
+        'difficulty': 'Difficulty',
+        'submitted': 'Submitted',
+        'waiting_review': 'Waiting Review',
+        'approved': 'Approved',
+        'sp_per_dp': 'SP/DP',
+        'accuracy': 'Accuracy',
+        'dp_left': 'DP Left',
+        'earned': 'Earned',
+        'workload_type': 'Workload'
+    }, inplace=True)
+    df['Accuracy'] = df['Accuracy'].apply(lambda x: f'{x:.2f}%' if x else None)
+    df['Earned'] = df['Earned'].apply(lambda x: f'{x} SP')
+    df['Workload'] = df['Workload'].apply(classify_workload)
+    print(tabulate(df, headers='keys', tablefmt='grid', showindex=False))
+    df.to_csv(data_path / 'stats' / f'{account_id}.csv', index=False)
+
+
+async def solve_captcha(log_info: str, url: str) -> str | None:
+    solver = Solver(Service.TWOCAPTCHA, Web3mtENV.TWO_CAPTCHA_API_KEY)
+    logger.info(f'{log_info} | Solving captcha')
+    for i in range(retry_count):
+        try:
+            solved = await solver.solve_recaptcha_v2(
+                site_key='6LddMRwqAAAAABCvraXuK1zkUN6CEnRRiTdp9dgT', page_url=url,
+            )
+            break
+        except (
+                httpx.HTTPStatusError, anycaptcha.errors.UnableToSolveError, httpx.RemoteProtocolError,
+                anycaptcha.errors.SolutionWaitTimeout, httpx.ConnectTimeout, httpx.ConnectError, httpx.ReadError,
+                httpx.ReadTimeout
+        ) as e:
+            logger.warning(f'{log_info} | Error when solving captcha. {e}. Trying again {i + 1}/{retry_count}')
+            await sleep(10, 30)
+    else:
+        return
+    logger.info(f'{log_info} | Captcha solved')
+    return solved.solution.token
+
+
+all_proxies = []
+
+
+async def get_all_proxies():
+    global all_proxies
+    if not all_proxies:
+        all_proxies = await create_db_instance().get_all_from_table(Proxy)
+    return all_proxies
+
+
+asyncio.run(get_all_proxies())
 
 if __name__ == '__main__':
     asyncio.run(test_gpt_annotate())
