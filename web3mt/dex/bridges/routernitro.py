@@ -25,10 +25,10 @@ class RouterNitro(Bridge):
             }
         )
         bridge_info.bridge_fee = TokenAmount(
-            data['bridgeFee']['amount'], wei=True, token=bridge_info.token_amount_in.token
+            data['bridgeFee']['amount'], is_wei=True, token=bridge_info.token_amount_in.token
         )
         bridge_info.token_amount_out = TokenAmount(
-            amount=int(data["destination"]["tokenAmount"]), wei=True, token=bridge_info.token_out
+            amount=int(data["destination"]["tokenAmount"]), is_wei=True, token=bridge_info.token_out
         )
         tx_data = data["txn"]
         bridge_info.tx_params = await self.client.create_tx_params(

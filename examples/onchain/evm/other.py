@@ -49,7 +49,7 @@ async def _get_balance_multicall(
                 pass  # FIXME:
         all_balances += balances
     for balance, profile in zip(all_balances, profiles):
-        token_amount = TokenAmount(balance, wei=True, token=token)
+        token_amount = TokenAmount(balance, is_wei=True, token=token)
         if is_condition(token_amount):
             if echo:
                 my_logger.info(f'{profile.id} | {profile.evm_address} ({chain}) | {token_amount}')

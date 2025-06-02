@@ -47,7 +47,7 @@ async def sell_all_aptmaps(profile: Profile):
         listed_aptmaps = await client.get_listed_nfts()
         for listed_aptmap in listed_aptmaps:
             price = int(
-                TokenAmount(listed_aptmap["attributes"]["price"], wei=True).ether
+                TokenAmount(listed_aptmap["attributes"]["price"], is_wei=True).ether
             )
             listing_id = listed_aptmap["attributes"]["listing_id"]
             token_name = listed_aptmap["attributes"]["name"]

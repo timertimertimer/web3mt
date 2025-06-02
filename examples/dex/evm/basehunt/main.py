@@ -149,12 +149,12 @@ class Basehunt(DEX):
             await Warmup(client=self.client).execute_bridge(
                 TokenAmount(
                     random.randint(to_wei(0.00011, 'ether'), to_wei(0.00012, 'ether')),
-                    wei=True, token=Token(random.choice(routes))
+                    is_wei=True, token=Token(random.choice(routes))
                 ), self.client.chain.native_token
             )
         else:
             token_amount_out = TokenAmount(
-                random.randint(to_wei(0.00015, 'ether'), to_wei(0.0002, 'ether')), wei=True,
+                random.randint(to_wei(0.00015, 'ether'), to_wei(0.0002, 'ether')), is_wei=True,
                 token=random.choice([Optimism, zkSync]).native_token
             )
             self.client.chain = token_amount_out.token.chain
@@ -174,7 +174,7 @@ class Basehunt(DEX):
             await Warmup(client=self.client).execute_bridge(
                 TokenAmount(
                     random.randint(to_wei(0.00011, 'ether'), to_wei(0.00012, 'ether')),
-                    wei=True, token=token_amount_out.token
+                    is_wei=True, token=token_amount_out.token
                 ), Base.native_token
             )
         self.client.chain = Base

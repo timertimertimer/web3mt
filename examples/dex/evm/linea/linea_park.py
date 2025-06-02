@@ -748,7 +748,7 @@ class LineaPark(ProfileClient):
                 ])
                 if await self.tx(
                         contract.address, 'Gamic', tx_data,
-                        value=TokenAmount(int(data['value']), wei=True), check_existing=False
+                        value=TokenAmount(int(data['value']), is_wei=True), check_existing=False
                 ):
                     return True
 

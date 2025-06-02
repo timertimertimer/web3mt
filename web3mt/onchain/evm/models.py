@@ -459,12 +459,12 @@ class TokenAmount:
     def __init__(
             self,
             amount: int | float | str | Decimal,
-            wei: bool = False,
+            is_wei: bool = False,
             token: Union[Token, 'AptosToken'] = None,
             **kwargs
     ) -> None:
         self.token = token or Token(Ethereum)
-        if wei:
+        if is_wei:
             self._wei: int = int(amount)
             self._ether: Decimal = self._convert_wei_to_ether(amount)
         else:

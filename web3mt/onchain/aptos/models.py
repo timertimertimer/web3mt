@@ -66,11 +66,11 @@ class TokenAmount(TA):
     def __init__(
             self,
             amount: int | float | str | Decimal = 0,
-            wei: bool = False,
+            is_wei: bool = False,
             token: Token = Token(),
             **kwargs
     ):
-        super().__init__(amount, wei, token)
+        super().__init__(amount, is_wei, token)
 
     def __repr__(self):
         return (

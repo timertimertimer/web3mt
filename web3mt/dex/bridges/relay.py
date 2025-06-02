@@ -38,10 +38,10 @@ class Relay(Bridge):
             return
         fees = data['fees']['relayer']
         bridge_info.bridge_fee = TokenAmount(
-            amount=fees['amount'], wei=True, token=Token(chain=fees["currency"]["chainId"], **fees["currency"])
+            amount=fees['amount'], is_wei=True, token=Token(chain=fees["currency"]["chainId"], **fees["currency"])
         )
         bridge_info.token_amount_out = TokenAmount(
-            amount=data["details"]["currencyOut"]["amount"], wei=True,
+            amount=data["details"]["currencyOut"]["amount"], is_wei=True,
             token=Token(
                 chain=data["details"]["currencyOut"]["currency"]["chainId"],
                 **data["details"]["currencyOut"]["currency"]

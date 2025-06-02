@@ -1,5 +1,4 @@
 import time
-from typing import Any
 
 from aptos_sdk.authenticator import Authenticator, Ed25519Authenticator
 from aptos_sdk.transactions import SignedTransaction, RawTransaction, TransactionPayload, EntryFunction
@@ -62,7 +61,7 @@ class Client(RestClient):
 
     async def balance(self, echo: bool = False):
         try:
-            balance = TokenAmount(await self.account_balance(self.account_.address()), wei=True)
+            balance = TokenAmount(await self.account_balance(self.account_.address()), is_wei=True)
         except ResourceNotFound:
             balance = TokenAmount()
         if echo:
@@ -149,6 +148,6 @@ class Client(RestClient):
         response, data = await self.session.post(url=self.GRAPHQL_URL, json={'query': query, 'variables': variables})
         assets = data['data']['current_fungible_asset_balances']
         return [
-            TokenAmount(amount=token['amount'], wei=True, token=Token(**token['metadata']))
+            TokenAmount(amount=token['amount'], is_wei=True, token=Token(**token['metadata']))
             for token in assets
         ]

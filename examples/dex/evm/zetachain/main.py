@@ -260,7 +260,7 @@ class ZetachainHub(ProfileClient):
                 'src_chain': 'zetachain', 'dst_chain': 'zetachain',
                 'token_in': TOKENS['ZETA'],
                 'token_out': TOKENS['ETH.ETH'],
-                'amount': TokenAmount(amount, wei=True).ether,
+                'amount': TokenAmount(amount, is_wei=True).ether,
                 'address': self.account.address,
                 'slippage': 2
             }
@@ -276,7 +276,7 @@ class ZetachainHub(ProfileClient):
                 await self.tx(
                     to=tx_data['target'],
                     data=tx_data['calldata'],
-                    value=TokenAmount(int(tx_data['value']), wei=True),
+                    value=TokenAmount(int(tx_data['value']), is_wei=True),
                     name='"Swap ETH.ETH to WZETA or vice-versa on ZetaSwap" task'
                 )
                 return
@@ -296,7 +296,7 @@ class ZetachainHub(ProfileClient):
                 'src_chain': 'zetachain', 'dst_chain': 'zetachain',
                 'token_in': TOKENS['ZETA'],
                 'token_out': TOKENS['BTC.BTC'],
-                'amount': TokenAmount(amount, wei=True).ether,
+                'amount': TokenAmount(amount, is_wei=True).ether,
                 'address': self.account.address,
                 'slippage': 0.5
             }
@@ -312,7 +312,7 @@ class ZetachainHub(ProfileClient):
                 if await self.tx(
                         to=tx_data['target'],
                         data=tx_data['calldata'],
-                        value=TokenAmount(int(tx_data['value']), wei=True),
+                        value=TokenAmount(int(tx_data['value']), is_wei=True),
                         name='"Swap on NativeX" task'
                 ):
                     return
@@ -333,7 +333,7 @@ class ZetachainHub(ProfileClient):
         await sleep(delay_between_rpc_requests, echo=False)
         await bsc_client.tx(
             to='0x70e967acFcC17c3941E87562161406d41676FD83',
-            value=TokenAmount(random.randint(10 ** 9, 10 ** 10), wei=True),
+            value=TokenAmount(random.randint(10 ** 9, 10 ** 10), is_wei=True),
             name='"Receive BNB in ZetaChain" task'
         )
 
@@ -362,7 +362,7 @@ class ZetachainHub(ProfileClient):
                         self.account.address,
                         ts
                     ]),
-                    value=TokenAmount(bnb_price / zeta_price * TokenAmount(bnb_amount, wei=True).ether),
+                    value=TokenAmount(bnb_price / zeta_price * TokenAmount(bnb_amount, is_wei=True).ether),
                     name='"LP any core pool" task'
             ):
                 return
@@ -394,7 +394,7 @@ class ZetachainHub(ProfileClient):
             await sleep(delay_between_rpc_requests, echo=False)
             if await self.tx(
                     to=main_contract.address,
-                    value=TokenAmount(zeta_amount, wei=True),
+                    value=TokenAmount(zeta_amount, is_wei=True),
                     data=main_contract.encodeABI(fn_name="multicall", args=[[encoded_data, "0x12210e8a"]]),
                     name='"Receive BTC in ZetaChain" task'
             ):
@@ -426,7 +426,7 @@ class ZetachainHub(ProfileClient):
             await sleep(delay_between_rpc_requests, echo=False)
             if await self.tx(
                     to=to_checksum_address(CONTRACTS['multicall']),
-                    value=TokenAmount(zeta_amount, wei=True),
+                    value=TokenAmount(zeta_amount, is_wei=True),
                     data=main_contract.encodeABI(fn_name="multicall", args=[[encoded_data, "0x12210e8a"]]),
                     name='"Receive ETH in ZetaChain" task'
             ):
@@ -441,7 +441,7 @@ class ZetachainHub(ProfileClient):
         await sleep(delay_between_rpc_requests, echo=False)
         await self.tx(
             to=TOKENS['stZETA'],
-            value=TokenAmount(random.randint(10 ** 14, 10 ** 15), wei=True),
+            value=TokenAmount(random.randint(10 ** 14, 10 ** 15), is_wei=True),
             data='0x5bcb2fc6',
             name='"Complete a stake on ZetaEarn" task'
         )
@@ -457,7 +457,7 @@ class ZetachainHub(ProfileClient):
             await sleep(delay_between_rpc_requests, echo=False)
             await self.tx(
                 to=TOKENS['WZETA'],
-                value=TokenAmount(amount, wei=True),
+                value=TokenAmount(amount, is_wei=True),
                 data='0xd0e30db0',
                 name='Wrap ZETA'
             )
@@ -479,7 +479,7 @@ class ZetachainHub(ProfileClient):
         await self.stake_zeta(stZETA_amount)
         await sleep(delay_between_rpc_requests, echo=False)
         await self.approve(
-            amount=TokenAmount(stZETA_amount, wei=True, token=Token(address=TOKENS['stZETA'], chain=ZetaChain)),
+            amount=TokenAmount(stZETA_amount, is_wei=True, token=Token(address=TOKENS['stZETA'], chain=ZetaChain)),
             spender_contract=self.w3.eth.contract(CONTRACTS['izumi_wzeta_stzeta_pool'], abi=izumi_WZETA_stZETA_pool_abi)
         )
         await sleep(delay_between_rpc_requests, echo=False)
@@ -487,7 +487,7 @@ class ZetachainHub(ProfileClient):
         await wrap_zeta(WZETA_amount)
         await sleep(delay_between_rpc_requests, echo=False)
         await self.approve(
-            amount=TokenAmount(WZETA_amount, wei=True, token=Token(address=TOKENS['WZETA'], chain=ZetaChain)),
+            amount=TokenAmount(WZETA_amount, is_wei=True, token=Token(address=TOKENS['WZETA'], chain=ZetaChain)),
             spender_contract=self.w3.eth.contract(CONTRACTS['izumi_wzeta_stzeta_pool'], abi=izumi_WZETA_stZETA_pool_abi)
         )
         await sleep(delay_between_rpc_requests, echo=False)
@@ -507,7 +507,7 @@ class ZetachainHub(ProfileClient):
         async def deposit_stZETA():
             await self.tx(
                 to=CONTRACTS['stzeta_minter'],
-                value=TokenAmount(stZETA_amount, wei=True),
+                value=TokenAmount(stZETA_amount, is_wei=True),
                 data=self.w3.eth.contract(address=CONTRACTS['stzeta_minter'], abi=stZETA_minter_abi).encodeABI(
                     'deposit', args=[self.account.address]
                 ),
@@ -527,7 +527,7 @@ class ZetachainHub(ProfileClient):
         await deposit_stZETA()
         await sleep(delay_between_rpc_requests, echo=False)
         await self.approve(
-            amount=TokenAmount(stZETA_amount, wei=True, token=Token(address=TOKENS['stZETA'], chain=ZetaChain)),
+            amount=TokenAmount(stZETA_amount, is_wei=True, token=Token(address=TOKENS['stZETA'], chain=ZetaChain)),
             spender_contract=self.w3.eth.contract(CONTRACTS['izumi_wzeta_stzeta_pool'], abi=izumi_WZETA_stZETA_pool_abi)
         )
         await sleep(delay_between_rpc_requests, echo=False)
@@ -541,7 +541,7 @@ class ZetachainHub(ProfileClient):
                          f'0000000000000000000000000000000000004000000000000000000000000000000000000000000000000000000000000000'
                          f'020000000000000000000000005f0b1a82749cb4e2278ec87f8bf6b618dc71a8bf000000000000000000000000'
                          f'{random.choice(list(ZRC20_TOKENS.values()) + [TOKENS["WZETA"], TOKENS["stZETA"]])[2:]}',
-                    value=TokenAmount(random.randrange(TokenAmount(0.001).wei), wei=True),
+                    value=TokenAmount(random.randrange(TokenAmount(0.001).wei), is_wei=True),
                     name='"Swap any tokens on Eddy Finance" task'
             ):
                 return
@@ -684,7 +684,7 @@ async def swap_btc_to_zeta(profile: Profile):
                     if await client.tx(
                             to=tx_data['target'],
                             data=tx_data['calldata'],
-                            value=TokenAmount(int(tx_data['value']), wei=True),
+                            value=TokenAmount(int(tx_data['value']), is_wei=True),
                             name='Swap BTC.BTC to ZETA'
                     ):
                         return

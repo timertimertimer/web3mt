@@ -307,7 +307,7 @@ class BaseEVMClient:
             balance = 0
         except Exception as e:
             pass
-        return TokenAmount(amount=balance, wei=True, token=Token(chain=self.chain))
+        return TokenAmount(amount=balance, is_wei=True, token=Token(chain=self.chain))
 
     async def wait_for_gwei(self):
         if self.chain.max_gwei and self.config.wait_for_gwei:
