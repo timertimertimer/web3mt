@@ -1,6 +1,6 @@
 [project]
 name = "web3mt"
-version = "0.1.18"
+version = "0.1.19"
 description = "Web3 multitool"
 authors = [{ name = "timertimertimer", email = "timerkhan2002@gmail.com" }]
 requires-python = "~=3.11"

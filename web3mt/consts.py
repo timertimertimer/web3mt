@@ -28,5 +28,7 @@ class Web3mtENV:
     OKX_API_SECRET = os.getenv("OKX_API_SECRET", "")
     OKX_API_PASSPHRASE = os.getenv("OKX_API_PASSPHRASE", "")
 
+    TRONGRID_API_KEY = os.getenv("TRONGRID_API_KEY", "")
+
 
 DEV = False

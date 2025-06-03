@@ -5,7 +5,7 @@ from eth_utils import to_checksum_address
 
 from web3mt.consts import Web3mtENV
 from web3mt.models import Coin
-from web3mt.utils import format_number, my_logger
+from web3mt.utils import format_number, my_logger as logger
 from typing import Union, TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -490,7 +490,7 @@ class TokenAmount:
         from web3mt.cex.models import Asset
         if isinstance(other, Asset):
             return self.token == other.coin
-        return self.token == other.token and self.wei == other.wei
+        return self.token == other.token and self.wei == other.sun
 
     def __gt__(self, other):
         if not isinstance(other, TokenAmount):
@@ -561,14 +561,14 @@ class TokenAmount:
         try:
             return Decimal(str(amount)) / 10 ** self.token.decimals
         except InvalidOperation as e:
-            my_logger.error(f'Couldn\'t convert {amount} wei to ether: {e}')
+            logger.error(f'Couldn\'t convert {amount} wei to ether: {e}')
             raise e
 
     def _convert_ether_to_wei(self, amount: int | float | str | Decimal) -> int:
         try:
             return int(Decimal(str(amount)) * 10 ** self.token.decimals)
         except InvalidOperation as e:
-            my_logger.error(f'Couldn\'t convert {amount} ether to wei: {e}')
+            logger.error(f'Couldn\'t convert {amount} ether to wei: {e}')
             raise e
 
 
