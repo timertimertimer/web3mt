@@ -15,9 +15,9 @@ from examples.dex.evm.sahara.utils import (
     answers_storage, exam_system_messages, review_system_messages, Conversation,
     text_label_type_system_messages, all_proxies, show_and_save_stats, solve_captcha, queries_folder
 )
-from web3mt.consts import Web3mtENV
+from web3mt.consts import env
 from web3mt.dex.models import DEX
-from web3mt.onchain.evm.client import BaseEVMClient
+from web3mt.onchain.evm.client import BaseClient
 from web3mt.utils import my_logger as logger, CustomAsyncSession, sleep, FileManager
 
 Account.enable_unaudited_hdwallet_features()
@@ -43,7 +43,7 @@ class SaharaClient(DEX):
         if self.account.session_token:
             session.headers.update({'Authorization': f'Bearer {self.account.session_token}'})
         session.config.log_info = str(account.account_id)
-        client = BaseEVMClient(
+        client = BaseClient(
             Account.from_key(account.private) if account.private.startswith('0x') or ' ' not in account.private else
             Account.from_mnemonic(account.private),
             chain=SaharaAI_Testnet, proxy=account.proxy
@@ -414,7 +414,7 @@ class SaharaClient(DEX):
                 response = await gpt_client.chat.completions.create(
                     model="gpt-4o-mini", web_search=False, stream=False,
                     proxy=(
-                        Web3mtENV.ROTATING_PROXY
+                        env.ROTATING_PROXY
                         if self._use_rotating_proxy_for_gpt
                         else random.choice(all_proxies).proxy_string
                     ),
@@ -454,7 +454,7 @@ class SaharaClient(DEX):
                     response = await gpt_client.chat.completions.create(
                         model="gpt-4o-mini", web_search=False, stream=False,
                         proxy=(
-                            Web3mtENV.ROTATING_PROXY
+                            env.ROTATING_PROXY
                             if self._use_rotating_proxy_for_gpt
                             else random.choice(all_proxies).proxy_string
                         ),
@@ -568,7 +568,7 @@ class SaharaClient(DEX):
                         response = await gpt_client.chat.completions.create(
                             model="gpt-4o-mini", web_search=False, stream=False,
                             proxy=(
-                                Web3mtENV.ROTATING_PROXY
+                                env.ROTATING_PROXY
                                 if self._use_rotating_proxy_for_gpt
                                 else random.choice(all_proxies).proxy_string
                             ),

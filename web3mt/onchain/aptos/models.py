@@ -52,7 +52,7 @@ class Token(Coin):
         return (
             f"Token(symbol={self.symbol}, asset_type={self.asset_type}, name={self.name}, decimals={self.decimals}, "
             f"token_standard={self.token_standard}, price="
-            f"{self.prices[self.symbol] if self.symbol in self.prices else None})"
+            f"{self.price})"
         )
 
     def __str__(self):

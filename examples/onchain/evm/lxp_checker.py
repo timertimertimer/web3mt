@@ -2,12 +2,12 @@ import asyncio
 
 from web3db import Profile, DBHelper
 
-from web3mt.consts import Web3mtENV
+from web3mt.consts import env
 from web3mt.onchain.evm.client import ProfileClient
 from web3mt.onchain.evm.models import Linea, Token, TokenAmount
 from web3mt.utils import my_logger, ProfileSession
 
-db = DBHelper(Web3mtENV.LOCAL_CONNECTION_STRING)
+db = DBHelper(env.LOCAL_CONNECTION_STRING)
 
 
 class Checker:
@@ -37,8 +37,8 @@ class Checker:
 async def change_proxy(profile: Profile):
     checker = Checker(profile)
     if not await checker.session.check_proxy(retry_count=0):
-        checker.session.proxies['all'] = Web3mtENV.DEFAULT_PROXY
-        checker.client.proxy = Web3mtENV.DEFAULT_PROXY
+        checker.session.proxies['all'] = env.DEFAULT_PROXY
+        checker.client.proxy = env.DEFAULT_PROXY
     return checker
 
 

@@ -9,7 +9,7 @@ from aptos_sdk.async_client import RestClient, ResourceNotFound, ClientConfig
 from pathlib import Path
 
 from web3mt.onchain.aptos.models import Token, NFT, TokenAmount
-from web3mt.consts import Web3mtENV
+from web3mt.consts import env
 from web3mt.utils import ProfileSession, my_logger, FileManager
 from web3mt.utils.custom_sessions import SessionConfig
 
@@ -29,7 +29,7 @@ class Client(RestClient):
     def __init__(
             self,
             profile: Profile = None,
-            encryption_password: str = Web3mtENV.PASSPHRASE,
+            encryption_password: str = env.PASSPHRASE,
             private: str = None,
             node_url: str = NODE_URL
     ):

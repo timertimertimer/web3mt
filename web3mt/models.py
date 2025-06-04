@@ -3,7 +3,7 @@ from decimal import Decimal
 
 class Coin:
     _instances = {}
-    prices = {}
+    _prices = {}
 
     def __new__(cls, symbol: str, *args, **kwargs):
         symbol = symbol.upper()
@@ -27,11 +27,11 @@ class Coin:
 
     @property
     def price(self) -> Decimal | None:
-        return self.prices.get(self.symbol) or self.prices.get(self.symbol.removeprefix('W'))
+        return self._prices.get(self.symbol) or self._prices.get(self.symbol.removeprefix('W'))
 
     @price.setter
     def price(self, value: int | float | str | Decimal):
-        self.prices[self.symbol] = Decimal(str(value))
+        self._prices[self.symbol] = Decimal(str(value))
 
     @classmethod
     def from_instance(cls, instance):

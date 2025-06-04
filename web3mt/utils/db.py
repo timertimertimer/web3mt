@@ -1,17 +1,9 @@
 import asyncio
 
-from web3db import DBHelper
+from web3db.core import create_db_instance, DBHelper
 
-from web3mt.consts import Web3mtENV
 from web3mt.offchain.webshare import Webshare
 from web3mt.utils import my_logger
-
-
-def create_db_instance(
-        connection_string: str = Web3mtENV.LOCAL_CONNECTION_STRING, engine_echo: bool = False, query_echo: bool = False
-) -> DBHelper:
-    db = DBHelper(connection_string, engine_echo=engine_echo, query_echo=query_echo)
-    return db
 
 
 async def update_shared_proxies(db_helper: DBHelper):

@@ -1,13 +1,13 @@
 from web3db import DBHelper, Profile
 
-from web3mt.consts import Web3mtENV
+from web3mt.consts import env
 from web3mt.onchain.aptos import BlueMove, Client
 from web3mt.onchain.aptos.models import TokenAmount
 from web3mt.utils import FileManager, my_logger
 
 from .config import *
 
-db = DBHelper(Web3mtENV.LOCAL_CONNECTION_STRING)
+db = DBHelper(env.LOCAL_CONNECTION_STRING)
 
 
 async def bluemove_batch_sell(profile: Profile):

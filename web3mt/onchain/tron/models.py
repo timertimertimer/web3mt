@@ -56,11 +56,11 @@ class Token(Coin):
 
     @property
     def price(self) -> Decimal | None:
-        return self.prices.get(self.get_unwrapped_symbol())
+        return self._prices.get(self.get_unwrapped_symbol())
 
     @price.setter
     def price(self, value: int | float | str | Decimal):
-        self.prices[self.get_unwrapped_symbol()] = Decimal(str(value))
+        self._prices[self.get_unwrapped_symbol()] = Decimal(str(value))
 
     def get_unwrapped_symbol(self) -> str:
         symbol = self.symbol
@@ -84,20 +84,20 @@ class TokenAmount:
         self.token = token or Token()
         if is_sun:
             self._sun: int = int(amount)
-            self._ether: Decimal = self._convert_sun_to_ether(amount)
+            self._trx: Decimal = self._convert_sun_to_trx(amount)
         else:
-            self._sun: int = self._convert_ether_to_sun(amount)
-            self._ether: Decimal = Decimal(str(amount))
+            self._sun: int = self._convert_trx_to_sun(amount)
+            self._trx: Decimal = Decimal(str(amount))
 
     def __str__(self) -> str:
         return (
-                f'{self.format_ether()} {self.token.symbol}' +
+                f'{self.format_trx()} {self.token.symbol}' +
                 (f' ({self.amount_in_usd:.2f}$)' if self.amount_in_usd else '')
         )
 
     def __repr__(self):
         return (
-                f'TokenAmount(wei={self.sun}, ether={self.format_ether()}, symbol={self.token.symbol}, '
+                f'TokenAmount(sun={self.sun}, trx={self.format_trx()}, symbol={self.token.symbol}, '
                 f'chain=Tron' + (f', amount_in_usd={self.amount_in_usd}' if self.amount_in_usd else '') +
                 ')'
         )
@@ -156,36 +156,36 @@ class TokenAmount:
     @sun.setter
     def sun(self, value):
         self._sun = value
-        self._ether = self._convert_sun_to_ether(value)
+        self._trx = self._convert_sun_to_trx(value)
 
     @property
-    def ether(self):
-        return self._ether
+    def trx(self):
+        return self._trx
 
-    @ether.setter
-    def ether(self, value):
-        self._ether = value
-        self._sun = self._convert_ether_to_sun(value)
+    @trx.setter
+    def trx(self, value):
+        self._trx = value
+        self._sun = self._convert_trx_to_sun(value)
 
     @property
     def amount_in_usd(self) -> Decimal | None:
         if self.token.price:
-            return self.token.price * self.ether
+            return self.token.price * self.trx
         return None
 
-    def format_ether(self) -> str:
-        return format_number(self._ether)
+    def format_trx(self) -> str:
+        return format_number(self._trx)
 
-    def _convert_sun_to_ether(self, amount: int | float | str | Decimal) -> Decimal:
+    def _convert_sun_to_trx(self, amount: int | float | str | Decimal) -> Decimal:
         try:
             return Decimal(str(amount)) / 10 ** self.token.decimals
         except InvalidOperation as e:
-            logger.error(f'Couldn\'t convert {amount} wei to ether: {e}')
+            logger.error(f'Couldn\'t convert {amount} sun to trx: {e}')
             raise e
 
-    def _convert_ether_to_sun(self, amount: int | float | str | Decimal) -> int:
+    def _convert_trx_to_sun(self, amount: int | float | str | Decimal) -> int:
         try:
             return int(Decimal(str(amount)) * 10 ** self.token.decimals)
         except InvalidOperation as e:
-            logger.error(f'Couldn\'t convert {amount} ether to wei: {e}')
+            logger.error(f'Couldn\'t convert {amount} trx to sun: {e}')
             raise e

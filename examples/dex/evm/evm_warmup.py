@@ -5,7 +5,7 @@ from decimal import Decimal
 from web3db import DBHelper
 from web3db import Profile
 
-from web3mt.consts import Web3mtENV
+from web3mt.consts import env
 from web3mt.dex.bridges.base import BridgeInfo, Bridge
 from web3mt.dex.bridges.bungee import Bungee
 from web3mt.dex.bridges.relay import Relay
@@ -293,7 +293,7 @@ async def get_profiles_without_nonce(profiles: list[Profile]) -> list[Profile]:
 
 
 async def main():
-    db = DBHelper(Web3mtENV.LOCAL_CONNECTION_STRING)
+    db = DBHelper(env.LOCAL_CONNECTION_STRING)
     profiles: list[Profile] = await db.get_rows_by_id([108], Profile)
     fees = await asyncio.gather(*[asyncio.create_task(bridge(profile)) for profile in profiles])
     my_logger.success(f'Total fee - {format_number(sum([fee or 0 for fee in fees]))}$')

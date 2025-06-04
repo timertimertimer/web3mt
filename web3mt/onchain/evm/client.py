@@ -18,11 +18,11 @@ from eth_utils import to_checksum_address, from_wei
 from web3db import Profile
 from web3db.utils import decrypt
 from web3mt.onchain.evm.models import *
-from web3mt.consts import Web3mtENV, DEV
+from web3mt.consts import env, DEV
 from web3mt.utils import sleep, my_logger as logger
 
 __all__ = [
-    'TransactionParameters', 'ProfileClient', 'ClientConfig', 'BaseEVMClient'
+    'TransactionParameters', 'ProfileClient', 'ClientConfig', 'BaseClient'
 ]
 
 
@@ -32,8 +32,8 @@ class TransactionParameters:
 
     def __init__(
             self,
-            to: str | None = Web3mtENV.DEFAULT_EVM_ADDRESS,
-            from_: str | None = Web3mtENV.DEFAULT_EVM_ADDRESS,
+            to: str | None = env.DEFAULT_EVM_ADDRESS,
+            from_: str | None = env.DEFAULT_EVM_ADDRESS,
             nonce: int | None = None,
             data: str | None = None,
             value: TokenAmount | int = TokenAmount(0),
@@ -149,12 +149,12 @@ class ClientConfig:
         self.wait_for_gwei = wait_for_gwei
 
 
-class BaseEVMClient:
+class BaseClient:
     def __init__(
             self,
             account: LocalAccount = None,
             chain: Chain = Ethereum,
-            proxy: str = Web3mtENV.DEFAULT_PROXY,
+            proxy: str = env.DEFAULT_PROXY,
             config: ClientConfig = ClientConfig(),
     ):
         self._chain = chain
@@ -468,13 +468,13 @@ class BaseEVMClient:
                 return False
 
 
-class ProfileClient(BaseEVMClient):
+class ProfileClient(BaseClient):
 
     def __init__(
             self,
             profile: Profile,
             chain: Chain = Ethereum,
-            encryption_password: str = Web3mtENV.PASSPHRASE,
+            encryption_password: str = env.PASSPHRASE,
             config: ClientConfig = ClientConfig(),
     ):
         self.profile = profile
