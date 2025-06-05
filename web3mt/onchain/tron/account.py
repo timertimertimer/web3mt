@@ -3,7 +3,7 @@ from tronpy.keys import PrivateKey, Signature
 from web3mt.consts import settings
 
 
-class TronAccount:
+class Account:
     def __init__(self, private_key: PrivateKey | str):
         if isinstance(private_key, str):
             self._private_key = PrivateKey.fromhex(private_key)
@@ -39,9 +39,9 @@ class TronAccount:
 
 
 if __name__ == '__main__':
-    new_account = TronAccount.create()
+    new_account = Account.create()
     print(f'{new_account.address=}')
     print(f'{new_account._private_key=}')
-    my_account = TronAccount.from_key(settings.TRON_PRIVATE_KEY)
+    my_account = Account.from_key(settings.TRON_PRIVATE_KEY)
     print(f'{my_account.address=}')
     print(f'{my_account._private_key=}')

@@ -14,7 +14,7 @@ from web3mt.onchain.evm.models import DefaultABIs
 from web3mt.onchain.tron.models import Token, tron_symbol, TokenAmount
 from web3mt.utils.logger import my_logger as logger
 
-from web3mt.onchain.tron.account import TronAccount
+from web3mt.onchain.tron.account import Account
 
 public_node = 'https://tron-rpc.publicnode.com'
 tron_rpcs = [
@@ -23,6 +23,7 @@ tron_rpcs = [
 ]
 private_rpc = 'http://92.53.84.170:8090'
 USDT = Token(address='TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t', symbol='USDT')
+PRIVATE_USDT = Token(address='TPBxYYbRN1Y3Hejf9EWznTqdxovVWi4VQ4', symbol='USDT')
 
 
 class Resource(str, enum.Enum):
@@ -33,7 +34,7 @@ class Resource(str, enum.Enum):
 class AccountData:
     def __init__(
             self,
-            account: TronAccount,
+            account: Account,
             balance: TokenAmount,
             create_time: datetime,
             latest_operation_time: datetime,
@@ -48,19 +49,19 @@ class AccountData:
 class BaseClient:
     native_tron = Token()
 
-    def __init__(self, account: TronAccount = None, http_rpc: str = public_node):
-        self.account = account or TronAccount.create()
+    def __init__(self, account: Account = None, http_rpc: str = public_node):
+        self.account = account or Account.create()
         self.w3 = AsyncTron(
             AsyncHTTPProvider(http_rpc, api_key=env.TRONGRID_API_KEY if 'trongrid' in http_rpc else DEFAULT_API_KEY)
         )
 
     @property
-    def account(self) -> TronAccount:
+    def account(self) -> Account:
         return self._account
 
     @account.setter
-    def account(self, account: TronAccount):
-        self._account: TronAccount = account
+    def account(self, account: Account):
+        self._account: Account = account
         self._update_log_info()
 
     def _update_log_info(self):
@@ -70,7 +71,7 @@ class BaseClient:
             self,
             name: str,
             builder: AsyncTransactionBuilder,
-            from_: TronAccount = None,
+            from_: Account = None,
             wait: bool = True
     ) -> dict | None:
         from_ = from_ or self.account
@@ -91,15 +92,13 @@ class BaseClient:
             return None
 
     async def send_trx(
-            self, amount: TokenAmount, to: str | TronAccount, from_: TronAccount = None
+            self, amount: TokenAmount, to: str | Account, from_: Account = None
     ) -> str | None:
         from_ = from_ or self.account
         await self.tx(
-            to=to,
             name=f'Transfer {amount} to {to}',
             builder=self.w3.trx.transfer(from_.address, to if isinstance(to, str) else to.address, amount.sun),
             from_=from_,
-            amount=amount.sun,
         )
 
     async def get_account(self) -> Optional[dict]:
@@ -133,7 +132,7 @@ class BaseClient:
         if token.symbol != tron_symbol:
             token = await self.get_onchain_token_info(contract=contract, token=token)
             contract = contract or AsyncContract(token.address, abi=DefaultABIs.token, client=self.w3)
-            amount = await contract.functions.balanceOf(owner_address).call()
+            amount = await contract.functions.balanceOf(owner_address)
             balance = TokenAmount(amount, True, token)
         else:
             try:
@@ -148,11 +147,33 @@ class BaseClient:
                 logger.debug(f'{self.log_info} | Balance - {balance}')
         return balance
 
+    async def transfer_token(
+            self,
+            to: str | Account,
+            amount: TokenAmount,
+            use_full_balance: bool = False,
+            **kwargs
+    ):
+        if isinstance(to, Account):
+            to = to.address
+        balance = await self.balance_of(token=amount.token)
+        if use_full_balance:
+            amount = balance
+        if balance.sun < amount.sun:
+            logger.warning(f'{self.log_info} | Balance - {balance} < amount - {amount}')
+            return False, ''
+        contract = AsyncContract(amount.token.address, abi=DefaultABIs.token, client=self.w3)
+        return await self.tx(
+            f'Transfer {amount} to {to}',
+            builder=await contract.functions.transfer(to, amount.sun),
+            **kwargs
+        )
+
 
 class PrivateBaseClient(BaseClient):
-    def __init__(self, account: TronAccount = None, http_rpc: str = private_rpc):
+    def __init__(self, account: Account = None, http_rpc: str = private_rpc):
         super().__init__(account, http_rpc)
-        self._ledger_account = TronAccount(settings.TRON_LEDGER_PRIVATE_KEY)
+        self._ledger_account = Account(settings.TRON_LEDGER_PRIVATE_KEY)
 
     async def activate_account(self) -> bool:
         if await self.balance_of():
@@ -173,37 +194,49 @@ async def main():
 
 
 async def main_private():
-    ledger_balance = await ledger_client.balance_of()
-    await my_client.activate_account()
-    my_account_data = await my_client.get_account()
+    ledger_balance = await ledger_private_client.balance_of()
+    await my_private_client.activate_account()
+    my_account_data = await my_private_client.get_account()
     return my_account_data
 
 
 async def deposit_from_ledger():
-    await my_client.balance_of(echo=True)
-    tx_id = await ledger_client.send_trx(TokenAmount(100), my_account)
-    data = await ledger_client.w3.get_transaction(tx_id)
-    await my_client.balance_of(echo=True)
+    await my_private_client.balance_of(echo=True)
+    tx_id = await ledger_private_client.send_trx(TokenAmount(100), my_account)
+    data = await ledger_private_client.w3.get_transaction(tx_id)
+    await my_private_client.balance_of(echo=True)
 
 
 async def freeze_balance():
-    await my_client.get_account()
+    await my_private_client.get_account()
     amount = TokenAmount(1)
     resource_type = Resource.ENERGY
-    await my_client.tx(
+    await my_private_client.tx(
         f'Freeze {amount} for {resource_type}',
-        my_client.w3.trx.freeze_balance(my_account.address, amount.sun, resource_type),
+        my_private_client.w3.trx.freeze_balance(my_account.address, amount.sun, resource_type),
     )
     resource_type = Resource.BANDWIDTH
-    await my_client.tx(
+    await my_private_client.tx(
         f'Freeze {amount} for {resource_type}',
-        my_client.w3.trx.freeze_balance(my_account.address, amount.sun, resource_type),
+        my_private_client.w3.trx.freeze_balance(my_account.address, amount.sun, resource_type),
     )
+
+
+async def get_usdt_balance():
+    ledger_balance = await ledger_private_client.balance_of(token=PRIVATE_USDT)
+    balance = await witness_private_client.balance_of(token=PRIVATE_USDT)
+    print(balance)
+
+async def transfer_usdt():
+    await witness_private_client.transfer_token(to=my_private_client.account, amount=TokenAmount(100, token=PRIVATE_USDT))
 
 
 if __name__ == '__main__':
-    ledger_account = TronAccount.from_key(settings.TRON_LEDGER_PRIVATE_KEY)
-    my_account = TronAccount.from_key(settings.TRON_PRIVATE_KEY)
-    my_client = PrivateBaseClient(my_account)
-    ledger_client = PrivateBaseClient(ledger_account)
-    asyncio.run(freeze_balance())
+    witness_account = Account.from_key(settings.TRON_WITNESS_PRIVATE_KEY)
+    ledger_account = Account.from_key(settings.TRON_LEDGER_PRIVATE_KEY)
+    my_account = Account.from_key(settings.TRON_PRIVATE_KEY)
+    my_private_client = PrivateBaseClient(my_account)
+    my_client = BaseClient(my_account)
+    ledger_private_client = PrivateBaseClient(ledger_account)
+    witness_private_client = PrivateBaseClient(witness_account)
+    asyncio.run(get_usdt_balance())

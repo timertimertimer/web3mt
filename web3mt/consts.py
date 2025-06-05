@@ -41,6 +41,10 @@ class Settings(BaseSettings):
     TRON_PRIVATE_KEY: Optional[str] = None
     TRONGRID_API_KEY: Optional[str] = None
     TRON_WITNESS_PRIVATE_KEY: Optional[str] = None
+    BITCOIN_RPC: Optional[str] = 'https://bitcoin-rpc.publicnode.com'
+    BITCOINCASH_RPC: Optional[str] = None
+    LITECOIN_RPC: Optional[str] = None
+    BITCOIN_MNEMONIC: Optional[str] = None
 
 
 env = ENV()
