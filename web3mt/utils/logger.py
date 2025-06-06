@@ -47,5 +47,5 @@ class Logger:
 
 
 my_logger = Logger()
-my_logger.info(f"Logs are saved in {MAIN_DIR}")
+my_logger.info(f"web3mt logs are saved in {MAIN_DIR}")
 __all__ = ["my_logger"]

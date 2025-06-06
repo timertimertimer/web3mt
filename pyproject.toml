@@ -22,6 +22,7 @@ dependencies = [
     "bitcoinlib>=0.7.4",
     "pydantic-settings>=2.9.1",
     "bitcoinrpc>=0.7.0",
+    "bitcoin-utils>=0.6.8",
 ]
 
 [project.urls]
