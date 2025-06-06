@@ -2,14 +2,14 @@ from web3db import Profile
 from web3mt.utils import ProfileSession, my_logger
 from web3mt.onchain.aptos.client import Client
 from web3mt.onchain.aptos.models import TokenAmount
-from web3mt.consts import Web3mtENV
+from web3mt.consts import env
 
 
 class BlueMove(Client):
     BLUEMOVE_API_URL = 'https://aptos-mainnet-api.bluemove.net/api/'
 
     def __init__(
-            self, profile: Profile, encryption_password: str = Web3mtENV.PASSPHRASE, node_url: str = Client.NODE_URL
+            self, profile: Profile, encryption_password: str = env.PASSPHRASE, node_url: str = Client.NODE_URL
     ):
         super().__init__(profile, encryption_password=encryption_password, node_url=node_url)
         self.session = ProfileSession(

@@ -1,7 +1,7 @@
 from datetime import datetime, timedelta
 from decimal import Decimal
 from pathlib import Path
-from web3mt.consts import Web3mtENV
+from web3mt.consts import env
 from web3mt.models import Coin
 from web3mt.utils import CustomAsyncSession
 from web3mt.utils import FileManager
@@ -19,8 +19,8 @@ class CoinGecko(CustomAsyncSession):
 
     def __init__(self):
         super().__init__(
-            Web3mtENV.DEFAULT_PROXY, SessionConfig('CoinGecko'),
-            headers={'x-cg-demo-api-key': Web3mtENV.COINGECKO_API_KEY}
+            env.DEFAULT_PROXY, SessionConfig('CoinGecko'),
+            headers={'x-cg-demo-api-key': env.COINGECKO_API_KEY}
         )
 
     async def _get_coins_list(self, include_contracts_in_response: bool = True) -> list:

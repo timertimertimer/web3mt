@@ -7,7 +7,7 @@ from web3db import Profile
 
 from web3mt.models import Coin
 from web3mt.offchain.coingecko import CoinGecko
-from web3mt.onchain.evm.client import ProfileClient, BaseEVMClient
+from web3mt.onchain.evm.client import ProfileClient, BaseClient
 from web3mt.onchain.evm.models import *
 from web3mt.utils import CustomAsyncSession, ProfileSession, my_logger as logger
 
@@ -21,9 +21,9 @@ class DEX(ABC):
     SLIPPAGE = Decimal('0.5')
     MAX_FEE_IN_USD = Decimal(1)
 
-    def __init__(self, session: CustomAsyncSession = None, client: ProfileClient | BaseEVMClient = None, profile: Profile = None):
+    def __init__(self, session: CustomAsyncSession = None, client: ProfileClient | BaseClient = None, profile: Profile = None):
         self.session = session or (ProfileSession(profile) if profile else CustomAsyncSession())
-        self.client = client or (ProfileClient(profile) if profile else BaseEVMClient())
+        self.client = client or (ProfileClient(profile) if profile else BaseClient())
 
     def __str__(self):
         return str(self.client)

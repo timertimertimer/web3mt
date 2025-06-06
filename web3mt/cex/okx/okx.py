@@ -10,7 +10,7 @@ from datetime import datetime, timezone
 from web3mt.cex.base import CEX, Asset
 from web3mt.cex.models import WithdrawInfo, User
 from web3mt.cex.okx.models import *
-from web3mt.consts import DEV, Web3mtENV
+from web3mt.consts import DEV, env
 from web3mt.models import Coin
 from web3mt.onchain.aptos.models import TokenAmount
 from web3mt.utils import my_logger
@@ -68,20 +68,20 @@ class OKX(CEX):
         )
         secret_key_bytes = (
             self.profile.okx.api_secret if self.profile and self.profile.okx.api_secret
-            else Web3mtENV.OKX_API_SECRET
+            else env.OKX_API_SECRET
         ).encode('utf-8')
         signature = hmac.new(secret_key_bytes, prehash_string.encode('utf-8'), sha256).digest()
         encoded_signature = base64.b64encode(signature).decode('utf-8')
         return {
             "Content-Type": "application/json",
             'OK-ACCESS-KEY': (
-                self.profile.okx.api_key if self.profile and self.profile.okx.api_key else Web3mtENV.OKX_API_KEY
+                self.profile.okx.api_key if self.profile and self.profile.okx.api_key else env.OKX_API_KEY
             ),
             'OK-ACCESS-SIGN': encoded_signature,
             'OK-ACCESS-TIMESTAMP': timestamp,
             'OK-ACCESS-PASSPHRASE': (
                 self.profile.okx.api_passphrase if self.profile and self.profile.okx.api_passphrase
-                else Web3mtENV.OKX_API_PASSPHRASE
+                else env.OKX_API_PASSPHRASE
             )
         }
 

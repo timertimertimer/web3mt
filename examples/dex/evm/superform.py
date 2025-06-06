@@ -2,7 +2,7 @@ import asyncio
 
 from web3db import Profile, DBHelper
 
-from web3mt.consts import Web3mtENV
+from web3mt.consts import env
 from web3mt.onchain.evm.client import ProfileClient
 from web3mt.onchain.evm.models import Base, TokenAmount
 from web3mt.utils import my_logger, ProfileSession
@@ -88,7 +88,7 @@ async def start(profile: Profile):
 
 
 async def main():
-    db = DBHelper(Web3mtENV.LOCAL_CONNECTION_STRING)
+    db = DBHelper(env.LOCAL_CONNECTION_STRING)
     profiles: list[Profile] = await db.get_all_from_table(Profile)
     total = await asyncio.gather(*[asyncio.create_task(start(profile)) for profile in profiles])
     my_logger.info(f'Total $PIGGY: {sum(total)}')

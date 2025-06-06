@@ -6,7 +6,7 @@ from examples.dex.evm.sahara.client import SaharaClient, SaharaAchievementsClien
 from examples.dex.evm.sahara.config import accounts_per_thread, start_delay_random_range
 from examples.dex.evm.sahara.db import SaharaAccount
 from examples.dex.evm.sahara.utils import data_path, db_helper
-from web3mt.consts import Web3mtENV
+from web3mt.consts import env
 from web3mt.utils import my_logger as logger, sleep
 
 
@@ -14,7 +14,7 @@ async def check_wl():
     def get_accounts_from_privates():
         with open(data_path / 'sahara/privates.txt', encoding='utf-8') as file:
             privates = [row.strip() for row in file.readlines()]
-        return [SaharaAccount(private=private, proxy=Web3mtENV.ROTATING_PROXY) for private in privates]
+        return [SaharaAccount(private=private, proxy=env.ROTATING_PROXY) for private in privates]
 
     MAX_PARALLEL_TASKS = 8
     semaphore = Semaphore(MAX_PARALLEL_TASKS)

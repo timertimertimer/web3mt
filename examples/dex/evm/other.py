@@ -8,12 +8,12 @@ from examples.dex.evm.config import abis
 from examples.onchain.evm.other import have_balance
 from web3mt.onchain.evm.client import ProfileClient
 from web3mt.onchain.evm.models import *
-from web3mt.consts import Web3mtENV
+from web3mt.consts import env
 from web3mt.onchain.evm.models import OP_Sepolia, Xterio
 from web3mt.utils import my_logger, sleep, FileManager, CustomAsyncSession, ProfileSession
 from web3mt.utils.custom_sessions import SessionConfig
 
-db = DBHelper(Web3mtENV.LOCAL_CONNECTION_STRING)
+db = DBHelper(env.LOCAL_CONNECTION_STRING)
 main_chains = [Ethereum, Scroll, zkSync, Base, Zora, Optimism, Arbitrum]
 
 
@@ -104,7 +104,7 @@ async def polymer_faucet(profile: Profile):
 
 async def bridge_to_xterio(profile: Profile):
     if not await ProfileSession(profile, config=SessionConfig(sleep_after_request=False, retry_count=1)).check_proxy():
-        profile.proxy.proxy_string = Web3mtENV.DEFAULT_PROXY
+        profile.proxy.proxy_string = env.DEFAULT_PROXY
 
     bsc_client = ProfileClient(chain=BNB, profile=profile)
     xterio_client = ProfileClient(chain=Xterio, profile=profile)

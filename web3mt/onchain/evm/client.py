@@ -3,8 +3,10 @@ from aiohttp import ClientHttpProxyError, ClientResponseError
 from hexbytes import HexBytes
 from web3 import AsyncWeb3, AsyncHTTPProvider
 from web3.eth import AsyncEth
-from web3.middleware import ExtraDataToPOAMiddleware, AttributeDictMiddleware, ENSNameToAddressMiddleware, \
+from web3.middleware import (
+    ExtraDataToPOAMiddleware, AttributeDictMiddleware, ENSNameToAddressMiddleware,
     ValidationMiddleware, Web3Middleware
+)
 from web3.net import AsyncNet
 from web3.types import _Hash32
 from web3.contract import AsyncContract
@@ -16,11 +18,11 @@ from eth_utils import to_checksum_address, from_wei
 from web3db import Profile
 from web3db.utils import decrypt
 from web3mt.onchain.evm.models import *
-from web3mt.consts import Web3mtENV, DEV
-from web3mt.utils import sleep, my_logger
+from web3mt.consts import env, DEV
+from web3mt.utils import sleep, my_logger as logger
 
 __all__ = [
-    'TransactionParameters', 'ProfileClient', 'ClientConfig', 'BaseEVMClient'
+    'TransactionParameters', 'ProfileClient', 'ClientConfig', 'BaseClient'
 ]
 
 
@@ -30,8 +32,8 @@ class TransactionParameters:
 
     def __init__(
             self,
-            to: str | None = Web3mtENV.DEFAULT_EVM_ADDRESS,
-            from_: str | None = Web3mtENV.DEFAULT_EVM_ADDRESS,
+            to: str | None = env.DEFAULT_EVM_ADDRESS,
+            from_: str | None = env.DEFAULT_EVM_ADDRESS,
             nonce: int | None = None,
             data: str | None = None,
             value: TokenAmount | int = TokenAmount(0),
@@ -147,12 +149,12 @@ class ClientConfig:
         self.wait_for_gwei = wait_for_gwei
 
 
-class BaseEVMClient:
+class BaseClient:
     def __init__(
             self,
             account: LocalAccount = None,
             chain: Chain = Ethereum,
-            proxy: str = Web3mtENV.DEFAULT_PROXY,
+            proxy: str = env.DEFAULT_PROXY,
             config: ClientConfig = ClientConfig(),
     ):
         self._chain = chain
@@ -164,14 +166,14 @@ class BaseEVMClient:
         return self.log_info
 
     async def __aenter__(self):
-        my_logger.info(f'{self.log_info} | Started')
+        logger.info(f'{self.log_info} | Started')
         return self
 
     async def __aexit__(self, exc_type, exc_val, exc_tb):
         if exc_type:
-            my_logger.error(f'{self.log_info} | {exc_val}')
+            logger.error(f'{self.log_info} | {exc_val}')
         else:
-            my_logger.success(f'{self.log_info} | Tasks done')
+            logger.success(f'{self.log_info} | Tasks done')
 
     @property
     def proxy(self) -> str:
@@ -250,7 +252,7 @@ class BaseEVMClient:
 
     async def get_onchain_token_info(self, contract: AsyncContract = None, token: Token = None) -> Token | None:
         if token == self.chain.native_token:
-            my_logger.warning(f'{self.log_info} | Can\'t get native token info')
+            logger.warning(f'{self.log_info} | Can\'t get native token info')
             return None
         contract = contract or self.w3.eth.contract(to_checksum_address(token.address), abi=DefaultABIs.token)
         token = token or Token(self.chain, address=contract.address)
@@ -289,21 +291,21 @@ class BaseEVMClient:
             balance = await self._native_balance(owner_address)
         if echo:
             if not remove_zero_from_echo:
-                my_logger.debug(f'{self.log_info} | Balance - {balance}')
+                logger.debug(f'{self.log_info} | Balance - {balance}')
             elif balance:
-                my_logger.debug(f'{self.log_info} | Balance - {balance}')
+                logger.debug(f'{self.log_info} | Balance - {balance}')
         return balance
 
     async def _native_balance(self, owner_address: str) -> TokenAmount:
         try:
             balance = await self.w3.eth.get_balance(to_checksum_address(owner_address))
         except (ClientHttpProxyError, ClientResponseError) as e:
-            my_logger.error(
+            logger.error(
                 f'{self.log_info} | Couldn\'t fetch {self.chain.native_token.symbol} balance. {e.message or type(e)}'
             )
             balance = 0
         except TimeoutError:
-            my_logger.warning(f'{self.log_info} | Timeout. Maybe bad proxy: {self.proxy}')
+            logger.warning(f'{self.log_info} | Timeout. Maybe bad proxy: {self.proxy}')
             balance = 0
         except Exception as e:
             pass
@@ -314,7 +316,7 @@ class BaseEVMClient:
             while True:
                 gas_price = from_wei(await self.w3.eth.gas_price, 'gwei')
                 if gas_price > self.chain.max_gwei:
-                    my_logger.debug(
+                    logger.debug(
                         f'{self.log_info} | Current GWEI: {gas_price} > {self.chain.max_gwei}. Waiting for gwei...'
                     )
                     await sleep(15, log_info=self.log_info, echo=self.config.sleep_echo)
@@ -369,7 +371,7 @@ class BaseEVMClient:
                 tx_p_d = tx_params.to_dict()
                 tx_params.gas_limit = await self.w3.eth.estimate_gas(tx_p_d)
             except (ContractLogicError, ValueError) as err:
-                my_logger.warning(f'{self.log_info} | Couldn\'t estimate gas. Transaction wasn\'t send - {err}')
+                logger.warning(f'{self.log_info} | Couldn\'t estimate gas. Transaction wasn\'t send - {err}')
                 return False, err
         if self.chain.eip1559_tx:
             if not tx_params.max_priority_fee_per_gas:
@@ -399,7 +401,7 @@ class BaseEVMClient:
                 else:
                     return ok, tx_hash_or_err
         if res:
-            my_logger.debug(f'{self.log_info} | {name} done. Cost - {tx_params.value}. Fee - {tx_params.fee}')
+            logger.debug(f'{self.log_info} | {name} done. Cost - {tx_params.value}. Fee - {tx_params.fee}')
         return res, tx_hash_or_err
 
     async def _send_transaction(self, tx_params: TransactionParameters) -> tuple[bool, Exception | HexBytes | str]:
@@ -423,21 +425,21 @@ class BaseEVMClient:
                     overshot = TokenAmount(int(error_message.split('overshot ')[1]), True, self.chain.native_token)
                     ratio = overshot.wei / tx_params.value.wei
                     if ratio < 0.1:
-                        my_logger.debug(f'{self.log_info} | Some overshot. Reducing tx value to -{overshot}')
+                        logger.debug(f'{self.log_info} | Some overshot. Reducing tx value to -{overshot}')
                         tx_params.value -= overshot
                     else:
-                        my_logger.warning(
+                        logger.warning(
                             f'{self.log_info} | {error_message}. Ratio of tx value and overshot: {ratio}%')
                         return False, e
                 else:
-                    my_logger.warning(f'{self.log_info} | {error_message}')
+                    logger.warning(f'{self.log_info} | {error_message}')
                     return False, e
             except Exception as e:
-                my_logger.error(f'{self.log_info} | {e}')
+                logger.error(f'{self.log_info} | {e}')
                 return False, e
         if not tx_hash.startswith('0x'):
             tx_hash = '0x' + tx_hash
-        my_logger.info(f'{self.log_info} | Transaction {self.chain.explorer}/tx/{tx_hash} with {tx_params} sent')
+        logger.info(f'{self.log_info} | Transaction {self.chain.explorer}/tx/{tx_hash} with {tx_params} sent')
         return True, tx_hash
 
     async def verify_transaction(self, tx_hash: _Hash32, tx_name: str) -> bool:
@@ -446,33 +448,33 @@ class BaseEVMClient:
             try:
                 data = await self.w3.eth.wait_for_transaction_receipt(tx_hash, 240)
                 if 'status' in data and data['status'] == 1:
-                    my_logger.debug(
+                    logger.debug(
                         f'{self.log_info} | Transaction {tx_name} ({explorer_link}) was successful'
                     )
                     return True
                 else:
-                    my_logger.error(
+                    logger.error(
                         f'{self.log_info} | Transaction {tx_name} ({explorer_link}) failed: '
                         f'{data["transactionHash"].hex()}'
                     )
                     return False
             except TimeExhausted as e:
-                my_logger.warning(f'{self.log_info} | Transaction {tx_name} ({explorer_link}) failed: {e}')
+                logger.warning(f'{self.log_info} | Transaction {tx_name} ({explorer_link}) failed: {e}')
                 if self.config.do_no_matter_what:
                     raise e
                 return False
             except Exception as err:
-                my_logger.warning(f'{self.log_info} | Transaction {tx_name} ({tx_hash}) failed: {err}')
+                logger.warning(f'{self.log_info} | Transaction {tx_name} ({tx_hash}) failed: {err}')
                 return False
 
 
-class ProfileClient(BaseEVMClient):
+class ProfileClient(BaseClient):
 
     def __init__(
             self,
             profile: Profile,
             chain: Chain = Ethereum,
-            encryption_password: str = Web3mtENV.PASSPHRASE,
+            encryption_password: str = env.PASSPHRASE,
             config: ClientConfig = ClientConfig(),
     ):
         self.profile = profile
@@ -520,13 +522,13 @@ class ProfileClient(BaseEVMClient):
         balance = await self.balance_of(token=amount.token)
         amount.token = balance.token
         if balance.wei <= 0:
-            my_logger.warning(f'{self.log_info} | {balance}. Can\'t approve zero balance')
+            logger.warning(f'{self.log_info} | {balance}. Can\'t approve zero balance')
             return
         if not amount or amount.wei > balance.wei:
             amount = balance
         approved = await self.get_allowance(spender_contract, amount.token)
         if amount.wei <= approved.wei:
-            my_logger.info(f'{self.log_info} | Already approved {approved}')
+            logger.info(f'{self.log_info} | Already approved {approved}')
             return
         return await self.tx(
             amount.token.address,
@@ -550,7 +552,7 @@ class ProfileClient(BaseEVMClient):
         if use_full_balance:
             amount = balance
         if balance.wei < amount.wei:
-            my_logger.warning(f'{self.log_info} | Balance - {balance} < amount - {amount}')
+            logger.warning(f'{self.log_info} | Balance - {balance} < amount - {amount}')
             return False, ''
         contract = self.w3.eth.contract(amount.token.address, abi=DefaultABIs.token)
         return await self.tx(

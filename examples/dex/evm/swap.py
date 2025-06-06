@@ -2,7 +2,7 @@ import asyncio
 
 from web3db import Profile, DBHelper
 
-from web3mt.consts import Web3mtENV
+from web3mt.consts import env
 from web3mt.dex.uniswap.uniswap import Uniswap
 from web3mt.onchain.evm.models import Arbitrum, Token, TokenAmount, ARB_WETH
 
@@ -20,7 +20,7 @@ async def uniswap(profile: Profile):
 
 
 async def main():
-    db = DBHelper(Web3mtENV.LOCAL_CONNECTION_STRING)
+    db = DBHelper(env.LOCAL_CONNECTION_STRING)
     profile = await db.get_row_by_id(1, Profile)
     await uniswap(profile)
 

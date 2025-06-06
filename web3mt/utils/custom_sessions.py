@@ -9,7 +9,7 @@ from better_proxy import Proxy
 
 if TYPE_CHECKING:
     from web3db.models import Profile
-from web3mt.consts import DEV, Web3mtENV
+from web3mt.consts import DEV, env
 from web3mt.utils import my_logger, sleep, set_windows_event_loop_policy
 
 set_windows_event_loop_policy()
@@ -57,7 +57,7 @@ class CustomAsyncSession(AsyncSession):
 
     def __init__(
             self,
-            proxy: str | None = Web3mtENV.DEFAULT_PROXY,
+            proxy: str | None = env.DEFAULT_PROXY,
             config: SessionConfig | None = None,
             **kwargs
     ) -> None:
@@ -112,7 +112,7 @@ class CustomAsyncSession(AsyncSession):
                     if e.code in (28, 55, 56):
                         pass
                     elif e.code == 7 and self.config.try_with_default_proxy:
-                        self.proxies['all'] = Web3mtENV.DEFAULT_PROXY
+                        self.proxies['all'] = env.DEFAULT_PROXY
                         s += ' Trying with default proxy'
                     elif not response or 600 >= response.status_code >= 400:
                         raise RequestsError(s)
@@ -153,7 +153,7 @@ class CustomAsyncSession(AsyncSession):
             if echo:
                 my_logger.warning(f'{self.config.log_info} | Proxy {self.proxies["all"]} is not working')
 
-    async def get_proxy_location(self, host: str = None, proxy: str = Web3mtENV.DEFAULT_PROXY) -> tuple[str, str]:
+    async def get_proxy_location(self, host: str = None, proxy: str = env.DEFAULT_PROXY) -> tuple[str, str]:
         host = host or Proxy.from_str(self.proxies['all'] or proxy).host
         _, data = await self.get('https://api.iplocation.net/', params=dict(ip=host))
         my_logger.debug(f'{self.config.log_info} | Proxy {host} in {data["country_code2"]}/{data["country_name"]}')
@@ -217,13 +217,13 @@ class ProfileSession(CustomAsyncSession):
 
 
 async def check_proxies():
-    from web3db import Profile, DBHelper
-    db = DBHelper(Web3mtENV.LOCAL_CONNECTION_STRING)
+    from web3db.core import create_db_instance
+    db = create_db_instance()
     profiles = await db.get_all_from_table(Profile)
     await asyncio.gather(*[ProfileSession(profile).check_proxy() for profile in profiles])
 
 
-async def get_location(ip: str = Web3mtENV.DEFAULT_PROXY):
+async def get_location(ip: str = env.DEFAULT_PROXY):
     client = CustomAsyncSession()
     await client.get_proxy_location(ip)
 

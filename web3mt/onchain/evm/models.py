@@ -3,9 +3,9 @@ from dataclasses import dataclass
 from _decimal import Decimal, InvalidOperation
 from eth_utils import to_checksum_address
 
-from web3mt.consts import Web3mtENV
+from web3mt.consts import env
 from web3mt.models import Coin
-from web3mt.utils import format_number, my_logger
+from web3mt.utils import format_number, my_logger as logger
 from typing import Union, TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -438,11 +438,11 @@ class Token(Coin):
 
     @property
     def price(self) -> Decimal | None:
-        return self.prices.get(self.get_unwrapped_symbol())
+        return self._prices.get(self.get_unwrapped_symbol())
 
     @price.setter
     def price(self, value: int | float | str | Decimal):
-        self.prices[self.get_unwrapped_symbol()] = Decimal(str(value))
+        self._prices[self.get_unwrapped_symbol()] = Decimal(str(value))
 
     def get_unwrapped_symbol(self) -> str:
         symbol = self.symbol
@@ -451,8 +451,8 @@ class Token(Coin):
         return symbol
 
     async def get_token_info(self) -> 'Token':
-        from web3mt.onchain.evm.client import BaseEVMClient
-        return await BaseEVMClient(chain=self.chain).get_onchain_token_info(token=self)
+        from web3mt.onchain.evm.client import BaseClient
+        return await BaseClient(chain=self.chain).get_onchain_token_info(token=self)
 
 
 class TokenAmount:
@@ -490,7 +490,7 @@ class TokenAmount:
         from web3mt.cex.models import Asset
         if isinstance(other, Asset):
             return self.token == other.coin
-        return self.token == other.token and self.wei == other.wei
+        return self.token == other.token and self.wei == other.sun
 
     def __gt__(self, other):
         if not isinstance(other, TokenAmount):
@@ -561,14 +561,14 @@ class TokenAmount:
         try:
             return Decimal(str(amount)) / 10 ** self.token.decimals
         except InvalidOperation as e:
-            my_logger.error(f'Couldn\'t convert {amount} wei to ether: {e}')
+            logger.error(f'Couldn\'t convert {amount} wei to ether: {e}')
             raise e
 
     def _convert_ether_to_wei(self, amount: int | float | str | Decimal) -> int:
         try:
             return int(Decimal(str(amount)) * 10 ** self.token.decimals)
         except InvalidOperation as e:
-            my_logger.error(f'Couldn\'t convert {amount} ether to wei: {e}')
+            logger.error(f'Couldn\'t convert {amount} ether to wei: {e}')
             raise e
 
 
@@ -751,7 +751,7 @@ Linea = Chain(
 
 zkSync = Chain(
     name='zkSync',
-    rpc=f'https://zksync-mainnet.g.alchemy.com/v2/{Web3mtENV.ALCHEMY_API_KEY}',
+    rpc=f'https://zksync-mainnet.g.alchemy.com/v2/{env.ALCHEMY_API_KEY}',
     chain_id=324,
     explorer='https://explorer.zksync.io/',
     eip1559_tx=True
@@ -776,7 +776,7 @@ Scroll = Chain(
 
 Zora = Chain(
     name='Zora',
-    rpc=f'https://7777777.rpc.thirdweb.com/{Web3mtENV.THIRDWEB_API_KEY}',
+    rpc=f'https://7777777.rpc.thirdweb.com/{env.THIRDWEB_API_KEY}',
     chain_id=7777777,
     explorer='https://zora.superscan.network/',
     eip1559_tx=True

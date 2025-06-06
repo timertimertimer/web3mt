@@ -6,13 +6,13 @@ from eth_utils.address import to_checksum_address
 from web3.exceptions import Web3RPCError
 from web3db import Profile, DBHelper
 
-from web3mt.consts import Web3mtENV
-from web3mt.onchain.evm.client import ProfileClient, BaseEVMClient, TransactionParameters
+from web3mt.consts import env
+from web3mt.onchain.evm.client import ProfileClient, BaseClient, TransactionParameters
 from web3mt.onchain.evm.models import *
 from web3mt.onchain.evm.models import Xterio
 from web3mt.utils import my_logger, ProfileSession
 
-db = DBHelper(Web3mtENV.LOCAL_CONNECTION_STRING)
+db = DBHelper(env.LOCAL_CONNECTION_STRING)
 main_chains = [Ethereum, Scroll, zkSync, Base, Zora, Optimism, Arbitrum, Linea]
 
 
@@ -27,7 +27,7 @@ async def _get_balance_multicall(
         token: Token = Ethereum.native_token, echo: bool = False,
         is_condition=lambda x: x.ether > 0
 ) -> TokenAmount:
-    client = BaseEVMClient(chain=chain)
+    client = BaseClient(chain=chain)
 
     contract = client.w3.eth.contract(to_checksum_address(token.address), abi=DefaultABIs.token)
     total_by_chain = TokenAmount(0, token=token)

@@ -11,7 +11,7 @@ from web3db import Profile, DBHelper
 
 from web3mt.cex.base import CEX
 from web3mt.cex.models import Asset, Account, User
-from web3mt.consts import DEV, Web3mtENV
+from web3mt.consts import DEV, env
 from web3mt.models import Coin
 from web3mt.utils import my_logger
 
@@ -187,7 +187,7 @@ class Bybit(CEX):
 
 
 async def main():
-    db = DBHelper(Web3mtENV.LOCAL_CONNECTION_STRING)
+    db = DBHelper(env.LOCAL_CONNECTION_STRING)
     profile = await db.get_row_by_id(1, Profile)
     bybit = Bybit(profile)
     # await bybit.get_funding_balance(coins=['SOL'])

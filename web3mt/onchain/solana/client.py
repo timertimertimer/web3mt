@@ -11,7 +11,7 @@ from solders.keypair import Keypair
 from web3db.core import DBHelper
 from web3db.models import Profile
 
-from web3mt.consts import Web3mtENV, DEV
+from web3mt.consts import env, DEV
 from web3mt.onchain.solana.models.token import Token
 from web3mt.utils.logger import my_logger
 
@@ -40,7 +40,7 @@ class BaseClient:
             self,
             account: Keypair = None,
             rpc: str = rpcs[0],
-            proxy: str = Web3mtENV.DEFAULT_PROXY
+            proxy: str = env.DEFAULT_PROXY
     ):
         self._rpc = rpc
         self.proxy = proxy
@@ -137,7 +137,7 @@ async def get_balance_batch(profiles: list[Profile], rpc: str = None):
 
 
 async def main():
-    db = DBHelper(Web3mtENV.LOCAL_CONNECTION_STRING)
+    db = DBHelper(env.LOCAL_CONNECTION_STRING)
     profiles = await db.get_all_from_table(Profile)
     await get_balance_batch(profiles)
     # await asyncio.gather(*[get_balance(profile) for profile in profiles])
