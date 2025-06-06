@@ -8,7 +8,7 @@ from pathlib import Path
 if sys.platform == 'win32':
     MAIN_DIR = Path(os.getenv('LOCALAPPDATA', tempfile.gettempdir())) / 'web3mt' / 'logs'
 else:
-    MAIN_DIR = Path(os.getenv('XDG_STATE_HOME', '/var/log')) / 'web3mt' / 'logs'
+    MAIN_DIR = Path(os.getenv('XDG_STATE_HOME', str(Path.home() / '.local' / 'state'))) / 'web3mt' / 'logs'
 if not Path.exists(MAIN_DIR):
     MAIN_DIR.mkdir(parents=True, exist_ok=True)
 
