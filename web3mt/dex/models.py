@@ -45,7 +45,7 @@ class DEX(ABC):
         chain_name = {
             Optimism: 'optimistic-ethereum',
             Arbitrum: 'arbitrum-one',
-            BNB: 'binance-smart-chain'
+            BSC: 'binance-smart-chain'
         }.get(chain, chain.name.lower())
         return data['platforms'][chain_name]
 

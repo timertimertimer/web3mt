@@ -25,7 +25,7 @@ class ENV(BaseSettings):
     CAPSOLVER_API_KEY: Optional[str] = None
     HELIUS_API_KEY: Optional[str] = None
 
-    CONNECTION_STRING: Optional[str] = None
+    CONNECTION_STRING: str
 
     OKX_API_KEY: Optional[str] = None
     OKX_API_SECRET: Optional[str] = None

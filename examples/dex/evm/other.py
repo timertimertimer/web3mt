@@ -20,7 +20,7 @@ main_chains = [Ethereum, Scroll, zkSync, Base, Zora, Optimism, Arbitrum]
 async def opbnb_bridge(profile: Profile, amount: float = 0.002):
     if await have_balance(ProfileClient(chain=opBNB, profile=profile)):
         return
-    client = ProfileClient(chain=BNB, profile=profile)
+    client = ProfileClient(chain=BSC, profile=profile)
     contract_address = '0xF05F0e4362859c3331Cb9395CBC201E3Fa6757Ea'
     client.default_abi = abis['opbnb_bridge']
     contract = client.w3.eth.contract(
@@ -106,18 +106,18 @@ async def bridge_to_xterio(profile: Profile):
     if not await ProfileSession(profile, config=SessionConfig(sleep_after_request=False, retry_count=1)).check_proxy():
         profile.proxy.proxy_string = env.DEFAULT_PROXY
 
-    bsc_client = ProfileClient(chain=BNB, profile=profile)
+    bsc_client = ProfileClient(chain=BSC, profile=profile)
     xterio_client = ProfileClient(chain=Xterio, profile=profile)
     bsc_balance = await bsc_client.balance_of()
     xterio_balance = await xterio_client.balance_of()
     if (
-            bsc_balance > TokenAmount(0.001, token=BNB.native_token)
+            bsc_balance > TokenAmount(0.001, token=BSC.native_token)
             and xterio_balance < TokenAmount(0.0005, token=Xterio.native_token)
     ):
         contract = bsc_client.w3.eth.contract(
             '0xC3671e7E875395314bBad175b2b7F0EF75DA5339', abi=abis['bridge_to_xterio']
         )
-        amount = TokenAmount(0.0003, token=BNB.native_token)
+        amount = TokenAmount(0.0003, token=BSC.native_token)
         await bsc_client.tx(
             contract.address,
             f'Bridge {amount} to Xterio',

@@ -12,7 +12,7 @@ from examples.dex.evm.zetachain.config import *
 from examples.dex.evm.zetachain.db import update_stats, create_table
 from web3mt.cex import OKX
 from web3mt.onchain.evm.client import ProfileClient, ClientConfig
-from web3mt.onchain.evm.models import ZetaChain, TokenAmount, BNB, Token, DefaultABIs
+from web3mt.onchain.evm.models import ZetaChain, TokenAmount, BSC, Token, DefaultABIs
 from web3mt.utils import set_windows_event_loop_policy, my_logger, sleep, ProfileSession
 
 load_dotenv()
@@ -327,7 +327,7 @@ class ZetachainHub(ProfileClient):
         )
 
     async def receive_bnb(self) -> None:
-        bsc_client = ProfileClient(chain=BNB, profile=self.profile)
+        bsc_client = ProfileClient(chain=BSC, profile=self.profile)
         if (await bsc_client.balance_of()).ether == 0:
             return
         await sleep(delay_between_rpc_requests, echo=False)
