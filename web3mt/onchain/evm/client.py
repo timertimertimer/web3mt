@@ -10,7 +10,7 @@ from web3.middleware import (
 from web3.net import AsyncNet
 from web3.types import _Hash32
 from web3.contract import AsyncContract
-from web3.exceptions import ContractLogicError, TimeExhausted
+from web3.exceptions import ContractLogicError, TimeExhausted, Web3RPCError
 from eth_account import Account
 from eth_account.messages import encode_defunct
 from eth_account.signers.local import LocalAccount
@@ -370,7 +370,7 @@ class BaseClient:
             try:
                 tx_p_d = tx_params.to_dict()
                 tx_params.gas_limit = await self.w3.eth.estimate_gas(tx_p_d)
-            except (ContractLogicError, ValueError) as err:
+            except (ContractLogicError, ValueError, Web3RPCError) as err:
                 logger.warning(f'{self.log_info} | Couldn\'t estimate gas. Transaction wasn\'t send - {err}')
                 return False, err
         if self.chain.eip1559_tx:
