@@ -15,7 +15,6 @@ from web3mt.onchain.evm.client import (
 from web3mt.onchain.evm.models import *
 from web3mt.utils import my_logger, ProfileSession
 
-db = DBHelper(env.CONNECTION_STRING)
 main_chains = [Ethereum, Scroll, zkSync, Base, Zora, Optimism, Arbitrum, Linea]
 
 
