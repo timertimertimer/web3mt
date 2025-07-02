@@ -10,7 +10,7 @@ from examples.dex.evm.basehunt.db import BasehuntState, DBHelper as StateDBHelpe
 from examples.dex.evm.evm_warmup import Warmup
 from web3db import DBHelper, Profile
 from web3mt.cex import OKX
-from web3mt.consts import env
+from web3mt.config import env
 from web3mt.dex.models import DEX
 from web3mt.onchain.evm.client import ProfileClient
 from web3mt.onchain.evm.models import TokenAmount, Base, Arbitrum, Optimism, Token, Linea, Zora, zkSync

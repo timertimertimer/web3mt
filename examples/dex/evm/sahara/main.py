@@ -6,7 +6,7 @@ from examples.dex.evm.sahara.client import SaharaClient, SaharaAchievementsClien
 from examples.dex.evm.sahara.config import accounts_per_thread, start_delay_random_range
 from examples.dex.evm.sahara.db import SaharaAccount
 from examples.dex.evm.sahara.utils import data_path, db_helper
-from web3mt.consts import env
+from web3mt.config import env
 from web3mt.utils import my_logger as logger, sleep
 
 

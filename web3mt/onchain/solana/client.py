@@ -11,7 +11,7 @@ from solders.keypair import Keypair
 from web3db.core import DBHelper
 from web3db.models import Profile
 
-from web3mt.consts import env, DEV
+from web3mt.config import env, DEV
 from web3mt.onchain.solana.models.token import Token
 from web3mt.utils.logger import my_logger
 

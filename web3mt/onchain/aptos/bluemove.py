@@ -2,7 +2,7 @@ from web3db import Profile
 from web3mt.utils import ProfileSession, my_logger
 from web3mt.onchain.aptos.client import Client
 from web3mt.onchain.aptos.models import TokenAmount
-from web3mt.consts import env
+from web3mt.config import env
 
 
 class BlueMove(Client):

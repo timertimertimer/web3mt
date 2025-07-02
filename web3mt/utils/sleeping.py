@@ -3,7 +3,7 @@ import random
 from datetime import timedelta
 
 from web3mt.utils import my_logger
-from web3mt.consts import DEV
+from web3mt.config import DEV
 
 
 async def sleep(

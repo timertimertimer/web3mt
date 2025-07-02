@@ -1,6 +1,10 @@
 from tronpy.keys import PrivateKey, Signature
+from bip_utils import (
+    Bip44Coins,
+    Bip44,
+)
 
-from web3mt.consts import settings
+from web3mt.utils.seeds import get_private_key_from_mnemonic
 
 
 class TronAccount:
@@ -27,6 +31,11 @@ class TronAccount:
             key = bytes.fromhex(key)
         return cls(PrivateKey(key))
 
+    @classmethod
+    def from_mnemonic(cls, mnemonic: str):
+        key = get_private_key_from_mnemonic(Bip44, Bip44Coins.TRON, mnemonic)
+        return cls.from_key(key)
+
     @property
     def key(self):
         return self._private_key
@@ -36,12 +45,3 @@ class TronAccount:
 
     def sign_transaction(self, txn):
         return txn.sign(self._private_key)
-
-
-if __name__ == '__main__':
-    new_account = TronAccount.create()
-    print(f'{new_account.address=}')
-    print(f'{new_account._private_key=}')
-    my_account = TronAccount.from_key(settings.TRON_PRIVATE_KEY)
-    print(f'{my_account.address=}')
-    print(f'{my_account._private_key=}')

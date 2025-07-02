@@ -2,7 +2,7 @@ import asyncio
 
 from web3db import Profile, DBHelper
 
-from web3mt.consts import env
+from web3mt.config import env
 from web3mt.onchain.aptos import Client
 from web3mt.onchain.aptos.models import Token, TokenAmount
 from web3mt.utils import my_logger

@@ -31,18 +31,22 @@ class ENV(BaseSettings):
     OKX_API_SECRET: Optional[str] = None
     OKX_API_PASSPHRASE: Optional[str] = None
 
-    TRONGRID_API_KEY: Optional[str] = None
 
-
-class Settings(BaseSettings):
+class TronENV(BaseSettings):
     model_config = SettingsConfigDict(env_file=env_path, env_file_encoding='utf-8', extra='ignore')
 
     TRON_LEDGER_PRIVATE_KEY: Optional[str] = None
+    TRON_LEDGER_MNEMONIC: Optional[str] = None
     TRON_PRIVATE_KEY: Optional[str] = None
+    TRON_MNEMONIC: Optional[str] = None
     TRONGRID_API_KEY: Optional[str] = None
     TRON_WITNESS_PRIVATE_KEY: Optional[str] = None
+    nile_rpc: str = 'https://nile.trongrid.io'
+    public_rpc: str = 'https://tron-rpc.publicnode.com'
+    symbol: str = 'TRX'
+    default_decimals: int = 6
 
 
 env = ENV()
-settings = Settings()
+tron_env = TronENV()
 DEV = False

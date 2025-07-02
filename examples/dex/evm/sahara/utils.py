@@ -19,7 +19,7 @@ from anycaptcha import Solver, Service
 
 from examples.dex.evm.sahara.config import retry_count
 from examples.dex.evm.sahara.models import TextQuestion
-from web3mt.consts import env
+from web3mt.config import env
 from web3mt.onchain.evm.models import Chain
 from web3mt.utils import FileManager, my_logger as logger, sleep
 from web3mt.utils.db import create_db_instance

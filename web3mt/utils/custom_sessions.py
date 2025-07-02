@@ -9,7 +9,7 @@ from better_proxy import Proxy
 
 if TYPE_CHECKING:
     from web3db.models import Profile
-from web3mt.consts import DEV, env
+from web3mt.config import DEV, env
 from web3mt.utils import my_logger, sleep, set_windows_event_loop_policy
 
 set_windows_event_loop_policy()

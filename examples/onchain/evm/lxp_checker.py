@@ -2,7 +2,7 @@ import asyncio
 
 from web3db import Profile, DBHelper
 
-from web3mt.consts import env
+from web3mt.config import env
 from web3mt.onchain.evm.client import ProfileClient
 from web3mt.onchain.evm.models import Linea, Token, TokenAmount
 from web3mt.utils import my_logger, ProfileSession

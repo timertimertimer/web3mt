@@ -6,7 +6,7 @@ from eth_utils.address import to_checksum_address
 from web3.exceptions import Web3RPCError
 from web3db import Profile, DBHelper
 
-from web3mt.consts import env
+from web3mt.config import env
 from web3mt.onchain.evm.client import (
     ProfileClient,
     BaseClient,

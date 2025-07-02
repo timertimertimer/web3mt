@@ -18,7 +18,7 @@ from eth_utils import to_checksum_address, from_wei
 from web3db import Profile
 from web3db.utils import decrypt
 from web3mt.onchain.evm.models import *
-from web3mt.consts import env, DEV
+from web3mt.config import env, DEV
 from web3mt.utils import sleep, my_logger as logger
 
 __all__ = [

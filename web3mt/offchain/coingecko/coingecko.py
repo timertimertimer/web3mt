@@ -1,7 +1,7 @@
 from datetime import datetime, timedelta
 from decimal import Decimal
 from pathlib import Path
-from web3mt.consts import env
+from web3mt.config import env
 from web3mt.models import Coin
 from web3mt.utils import CustomAsyncSession
 from web3mt.utils import FileManager

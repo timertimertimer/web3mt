@@ -5,7 +5,7 @@ from decimal import Decimal
 from web3db import DBHelper
 from web3db import Profile
 
-from web3mt.consts import env
+from web3mt.config import env
 from web3mt.dex.bridges.base import BridgeInfo, Bridge
 from web3mt.dex.bridges.bungee import Bungee
 from web3mt.dex.bridges.relay import Relay

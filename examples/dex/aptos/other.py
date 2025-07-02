@@ -1,6 +1,6 @@
 from web3db import DBHelper, Profile
 
-from web3mt.consts import env
+from web3mt.config import env
 from web3mt.onchain.aptos import BlueMove, Client
 from web3mt.onchain.aptos.models import TokenAmount
 from web3mt.utils import FileManager, my_logger

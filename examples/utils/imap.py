@@ -8,7 +8,7 @@ import chardet
 from web3db import Email, Profile
 
 from web3mt.utils import IMAPClient
-from web3mt.consts import env
+from web3mt.config import env
 from web3mt.utils.db import create_db_instance
 from web3mt.utils.logger import my_logger as logger
 

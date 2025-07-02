@@ -15,7 +15,7 @@ from examples.dex.evm.sahara.utils import (
     answers_storage, exam_system_messages, review_system_messages, Conversation,
     text_label_type_system_messages, all_proxies, show_and_save_stats, solve_captcha, queries_folder
 )
-from web3mt.consts import env
+from web3mt.config import env
 from web3mt.dex.models import DEX
 from web3mt.onchain.evm.client import BaseClient
 from web3mt.utils import my_logger as logger, CustomAsyncSession, sleep, FileManager

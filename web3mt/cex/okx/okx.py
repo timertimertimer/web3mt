@@ -10,7 +10,7 @@ from datetime import datetime, timezone
 from web3mt.cex.base import CEX, Asset
 from web3mt.cex.models import WithdrawInfo, User
 from web3mt.cex.okx.models import *
-from web3mt.consts import DEV, env
+from web3mt.config import DEV, env
 from web3mt.models import Coin
 from web3mt.onchain.aptos.models import TokenAmount
 from web3mt.utils import my_logger

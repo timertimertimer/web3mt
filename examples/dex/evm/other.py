@@ -8,7 +8,7 @@ from examples.dex.evm.config import abis
 from examples.onchain.evm.other import have_balance
 from web3mt.onchain.evm.client import ProfileClient
 from web3mt.onchain.evm.models import *
-from web3mt.consts import env
+from web3mt.config import env
 from web3mt.onchain.evm.models import OP_Sepolia, Xterio
 from web3mt.utils import my_logger, sleep, FileManager, CustomAsyncSession, ProfileSession
 from web3mt.utils.custom_sessions import SessionConfig

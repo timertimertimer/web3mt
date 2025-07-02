@@ -2,7 +2,7 @@ import asyncio
 
 from web3db import Profile, DBHelper
 
-from web3mt.consts import env
+from web3mt.config import env
 from web3mt.dex.uniswap.uniswap import Uniswap
 from web3mt.onchain.evm.models import Arbitrum, Token, TokenAmount, ARB_WETH
 

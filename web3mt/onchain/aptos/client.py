@@ -9,7 +9,7 @@ from aptos_sdk.async_client import RestClient, ResourceNotFound, ClientConfig
 from pathlib import Path
 
 from web3mt.onchain.aptos.models import Token, NFT, TokenAmount
-from web3mt.consts import env
+from web3mt.config import env
 from web3mt.utils import ProfileSession, my_logger, FileManager
 from web3mt.utils.custom_sessions import SessionConfig
 

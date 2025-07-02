@@ -4,7 +4,7 @@ from web3db import DBHelper, Profile
 
 from web3mt.cex.bybit.bybit import Bybit
 from web3mt.cex.okx.okx import OKX
-from web3mt.consts import env
+from web3mt.config import env
 from web3mt.onchain.evm.models import Ethereum
 from web3mt.utils import my_logger as logger
 

@@ -21,6 +21,7 @@ dependencies = [
     "tronpy>=0.5.0",
     "bitcoinlib>=0.7.4",
     "pydantic-settings>=2.9.1",
+    "bip-utils>=2.9.3",
 ]
 
 [project.urls]
@@ -47,6 +48,7 @@ dev = [
     "apscheduler>=3.11.0,<4",
     "openai>=1.66.5,<2",
     "pandas>=2.2.3,<3",
+    "ruff>=0.12.1",
 ]
 
 [tool.uv.sources]

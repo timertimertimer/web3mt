@@ -7,7 +7,7 @@ from curl_cffi.requests import RequestsError
 from web3db import Profile
 
 from web3mt.cex.models import User, Asset, Account
-from web3mt.consts import env
+from web3mt.config import env
 from web3mt.models import Coin
 from web3mt.utils import CustomAsyncSession, my_logger, ProfileSession
 from web3mt.utils.custom_sessions import SessionConfig

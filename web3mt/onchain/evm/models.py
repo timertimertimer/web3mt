@@ -3,7 +3,7 @@ from dataclasses import dataclass
 from _decimal import Decimal, InvalidOperation
 from eth_utils import to_checksum_address
 
-from web3mt.consts import env
+from web3mt.config import env
 from web3mt.models import Coin
 from web3mt.utils import format_number, my_logger as logger
 from typing import Union, TYPE_CHECKING

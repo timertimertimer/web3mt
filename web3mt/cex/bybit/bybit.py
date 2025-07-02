@@ -11,7 +11,7 @@ from web3db import Profile, DBHelper
 
 from web3mt.cex.base import CEX
 from web3mt.cex.models import Asset, Account, User
-from web3mt.consts import DEV, env
+from web3mt.config import DEV, env
 from web3mt.models import Coin
 from web3mt.utils import my_logger
 

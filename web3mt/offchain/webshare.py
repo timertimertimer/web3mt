@@ -1,7 +1,7 @@
 import asyncio
 from functools import partialmethod
 from pprint import pprint
-from web3mt.consts import env
+from web3mt.config import env
 from web3mt.utils import CustomAsyncSession
 
 
