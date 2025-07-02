@@ -106,7 +106,7 @@ class BaseClient:
             from_=from_,
             wait=wait,
         )
-        return data.get('tx_id') or data.get('txid')
+        return data.get('txid') or data.get('id')
 
     async def get_account(self) -> Optional[dict]:
         try:
@@ -180,7 +180,7 @@ async def deposit_from_ledger():
     my_client = BaseClient(my_account, tron_env.nile_rpc)
     ledger_client = BaseClient(ledger_account, tron_env.nile_rpc)
     await my_client.balance_of(echo=True)
-    tx_id = await ledger_client.send_trx(TokenAmount(100), my_account, wait=False)
+    tx_id = await ledger_client.send_trx(TokenAmount(100), my_account)
     data = await ledger_client.w3.get_transaction(tx_id)
     await my_client.balance_of(echo=True)
 
