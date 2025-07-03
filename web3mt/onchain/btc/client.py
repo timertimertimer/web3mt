@@ -1,7 +1,7 @@
 import asyncio
 from typing import List, Optional, Union, Dict, Literal
 
-from bitcoinrpc import BitcoinRPC
+from bitcoinrpc.bitcoin_rpc import BitcoinRPC
 from bitcoinlib.keys import HDKey
 from bitcoinlib.transactions import Transaction, Output
 from httpx import AsyncClient
