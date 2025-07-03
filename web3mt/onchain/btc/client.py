@@ -31,7 +31,7 @@ class Client(BitcoinRPC):
     ):
         self.network = network
         self.hk = HDKey.from_passphrase(mnemonic, network=self.network).subkey_for_path(
-            derivation_path=derivation_path
+            path=derivation_path, network=self.network
         )
         super().__init__(rpc, AsyncClient(timeout=10))
 
