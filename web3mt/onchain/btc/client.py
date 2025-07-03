@@ -106,7 +106,7 @@ class Client(BitcoinRPC):
             if total >= amount + fee:
                 break
         if total < amount + fee:
-            logger.info(f"{self} | Not enough balance to send transaction. Amount={amount}, balance=")
+            logger.warning(f"{self} | Not enough balance to send transaction. Transfer amount={amount}, balance={total}")
             return None
         change: BTCLikeAmount = total - amount - fee
         tx = Transaction(network=self.network)
@@ -126,6 +126,8 @@ class Client(BitcoinRPC):
 
     async def send_btc(self, to: str, amount: BTCLikeAmount):
         sign_hash = await self.sign_tx(to=to, amount=amount)
+        if not sign_hash:
+            return None
         tx_hash = await self.send_raw_transaction(sign_hash)
         logger.info(
             f"{self.hk.address()} ({self.network.capitalize()}) | Transfer {amount} to {to} sent. Tx: {tx_hash}"
@@ -149,7 +151,7 @@ if __name__ == "__main__":
             network="litecoin",
             mnemonic=btc_env.litecoin_mnemonic,
         ).send_btc(
-            to="ltc1q7qelkfpcua7ppkj58tgdk2ptlsdnkaqwjeq6pn",
+            to="ltc1qrsm7z2vn9q6vzma3gm7cm8upw9y0aamyaw3kq5",
             amount=BTCLikeAmount(0.01, token=Token(chain="litecoin")),
         )
     )
