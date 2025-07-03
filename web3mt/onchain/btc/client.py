@@ -35,6 +35,9 @@ class Client(BitcoinRPC):
         )
         super().__init__(rpc, AsyncClient(timeout=10))
 
+    def __str__(self):
+        return f'{self.hk.address()} ({self.network})'
+
     async def __aenter__(self):
         return self
 
@@ -95,16 +98,17 @@ class Client(BitcoinRPC):
         # FIXME: hardcode litecoin
         utxos = await LitecoinSpace().get_utxo(self.hk.address())
         fee = fee or BTCLikeAmount(0.001, token=Token(chain=self.network))
-        total = 0
+        total = BTCLikeAmount(0, token=Token(chain=self.network))
         selected = []
         for u in utxos:
             selected.append(u)
-            total += u["value"]
-            if total >= amount.sat + fee.sat:
+            total.sat += u["value"]
+            if total >= amount + fee:
                 break
-        if total < amount.sat + fee.sat:
-            raise Exception("Not enough balance")
-        change = total - amount.sat - fee.sat
+        if total < amount + fee:
+            logger.info(f"{self} | Not enough balance to send transaction. Amount={amount}, balance=")
+            return None
+        change: BTCLikeAmount = total - amount - fee
         tx = Transaction(network=self.network)
         for u in selected:
             tx.add_input(
@@ -116,7 +120,7 @@ class Client(BitcoinRPC):
             )
         tx.outputs.append(Output(amount.sat, to, network=self.network))
         if change > 0:
-            tx.outputs.append(Output(change, self.hk.address(), network=self.network))
+            tx.outputs.append(Output(change.sat, self.hk.address(), network=self.network))
         tx.sign()
         return tx.as_hex()
 
