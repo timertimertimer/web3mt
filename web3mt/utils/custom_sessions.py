@@ -59,12 +59,14 @@ class CustomAsyncSession(AsyncSession):
             self,
             proxy: str | None = env.DEFAULT_PROXY,
             config: SessionConfig | None = None,
+            base_url: str = None,
             **kwargs
     ) -> None:
         self.config = config or SessionConfig()
         headers = self.DEFAULT_HEADERS | kwargs.pop('headers', {})
         impersonate = kwargs.pop('impersonate', BrowserType.chrome120)
         super().__init__(
+            base_url=base_url,
             proxy=Proxy.from_str(proxy=proxy).as_url if proxy else None,
             headers=headers,
             impersonate=impersonate,

@@ -108,7 +108,7 @@ class TokenAmount:
         from web3mt.cex.models import Asset
         if isinstance(other, Asset):
             return self.token == other.coin
-        return self.token == other.token and self.sun == other.sun
+        return self.token == other.token and self.sun == other.sat
 
     def __gt__(self, other):
         if not isinstance(other, TokenAmount):

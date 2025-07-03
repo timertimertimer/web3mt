@@ -419,7 +419,7 @@ class TokenAmount:
 
         if isinstance(other, Asset):
             return self.token == other.coin
-        return self.token == other.token and self.wei == other.sun
+        return self.token == other.token and self.wei == other.sat
 
     def __gt__(self, other):
         if not isinstance(other, TokenAmount):

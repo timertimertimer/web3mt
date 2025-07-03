@@ -16,7 +16,7 @@ from web3mt.utils.logger import my_logger as logger
 
 from web3mt.onchain.tron.account import TronAccount
 
-tron_rpcs = ["https://api.trongrid.io", tron_env.public_rpc]
+tron_rpcs = ["https://api.trongrid.io", tron_env.tron_public_rpc]
 USDT = Token(address="TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t", symbol="USDT")
 
 
@@ -44,7 +44,7 @@ class BaseClient:
     native_tron = Token()
 
     def __init__(
-        self, account: TronAccount = None, http_rpc: str = tron_env.public_rpc
+        self, account: TronAccount = None, http_rpc: str = tron_env.tron_public_rpc
     ):
         self.account = account or TronAccount.create()
         self.w3 = AsyncTron(

@@ -8,7 +8,7 @@ dependencies = [
     "web3db",
     "web3>=7.1.0,<8",
     "solana>=0.33.0, <0.36.2",
-    "curl-cffi>=0.6.2,<0.7",
+    "curl-cffi>=0.10.0,<0.11.4",
     "better-proxy>=1.1.5,<2",
     "aioimaplib>=1.1.0,<2",
     "aiofiles>=23.2.1,<24",
@@ -22,6 +22,7 @@ dependencies = [
     "bitcoinlib>=0.7.4",
     "pydantic-settings>=2.9.1",
     "bip-utils>=2.9.3",
+    "bitcoinrpc>=0.7.0",
 ]
 
 [project.urls]
@@ -33,7 +34,6 @@ dev = [
     "aiohttp-proxy>=0.1.2,<0.2",
     "jwt>=1.3.1,<2",
     "nltk>=3.8.1,<4",
-    "tweepy-self>=1.11.0,<2",
     "selenium-driverless>=1.9.3.1,<2",
     "discord-py-self>=2.0.0,<3",
     "patchright>=1.48.0.post0,<2",

@@ -7,7 +7,9 @@ env_path = Path.cwd().parent.parent.parent / ".env"
 
 
 class ENV(BaseSettings):
-    model_config = SettingsConfigDict(env_file=env_path, env_file_encoding='utf-8', extra='ignore')
+    model_config = SettingsConfigDict(
+        env_file=env_path, env_file_encoding="utf-8", extra="ignore"
+    )
 
     PASSPHRASE: Optional[str] = None
     DEFAULT_PROXY: Optional[str] = None
@@ -33,7 +35,9 @@ class ENV(BaseSettings):
 
 
 class TronENV(BaseSettings):
-    model_config = SettingsConfigDict(env_file=env_path, env_file_encoding='utf-8', extra='ignore')
+    model_config = SettingsConfigDict(
+        env_file=env_path, env_file_encoding="utf-8", extra="ignore"
+    )
 
     TRON_LEDGER_PRIVATE_KEY: Optional[str] = None
     TRON_LEDGER_MNEMONIC: Optional[str] = None
@@ -41,12 +45,24 @@ class TronENV(BaseSettings):
     TRON_MNEMONIC: Optional[str] = None
     TRONGRID_API_KEY: Optional[str] = None
     TRON_WITNESS_PRIVATE_KEY: Optional[str] = None
-    nile_rpc: str = 'https://nile.trongrid.io'
-    public_rpc: str = 'https://tron-rpc.publicnode.com'
-    symbol: str = 'TRX'
+    nile_rpc: str = "https://nile.trongrid.io"
+    tron_public_rpc: str = "https://tron-rpc.publicnode.com"
+    symbol: str = "TRX"
     default_decimals: int = 6
+
+
+class BTClikeENV(BaseSettings):
+    model_config = SettingsConfigDict(
+        env_file=env_path, env_file_encoding="utf-8", extra="ignore"
+    )
+
+    bitcoin_public_rpc: str = "https://bitcoin-rpc.publicnode.com"
+    litecoin_rpc: Optional[str] = None
+    bitcoin_mnemonic: Optional[str] = None
+    litecoin_mnemonic: Optional[str] = None
 
 
 env = ENV()
 tron_env = TronENV()
+btc_env = BTClikeENV()
 DEV = False
