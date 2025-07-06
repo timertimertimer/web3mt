@@ -1,74 +1,64 @@
 import asyncio
 from abc import ABC, abstractmethod
 from decimal import Decimal
-from functools import partialmethod
 
-from curl_cffi.requests import RequestsError
 from web3db import Profile
 
 from web3mt.cex.models import User, Asset, Account
 from web3mt.config import env
 from web3mt.models import Coin
-from web3mt.utils import CustomAsyncSession, my_logger, ProfileSession
-from web3mt.utils.custom_sessions import SessionConfig
+from web3mt.utils import logger
+from web3mt.utils.http_sessions import (
+    SessionConfig,
+    httpxAsyncClient,
+)
 
-__all__ = ['CEX']
+__all__ = ["CEX", "ProfileCEX"]
 
 
-class CEX(ABC):
+class CEX(httpxAsyncClient, ABC):
     API_VERSION = None
-    URL = None
-    NAME = ''
+    MAIN_ENDPOINT = None
+    NAME = ""
 
     def __init__(
-            self, profile: Profile = None,
-            config: SessionConfig = None
+        self, proxy: str = env.default_proxy, config: SessionConfig = None, **kwargs
     ):
-        config = config or SessionConfig()
-        self.profile = profile
-        if profile:
-            self.session = ProfileSession(profile=profile, config=config)
-        else:
-            self.session = CustomAsyncSession(proxy=env.DEFAULT_PROXY, config=config)
+        httpxAsyncClient.__init__(
+            self, base_url=self.MAIN_ENDPOINT, proxy=proxy, config=config, **kwargs
+        )
         self.main_user = User(self)
-        self.log_info = str(profile.id) if profile else 'Main'
 
     def __repr__(self):
-        return f'{self.log_info} | {self.NAME}'
+        return f"{self.config.log_info} | {self.NAME}"
 
-    @abstractmethod
-    def get_headers(self, path: str, method: str = 'GET', **kwargs):
-        pass
-
-    async def request(self, method: str, path: str, **kwargs):
-        without_headers = kwargs.pop('without_headers', False)
+    async def make_request(self, method: str, url: str = None, **kwargs):
+        without_headers = kwargs.pop("without_headers", False)
         try:
-            return await self.session.request(
-                method, f'{self.URL}/{path}',
-                headers={} if without_headers else self.get_headers(path, method, **kwargs), **kwargs
+            return await super().make_request(
+                method=method,
+                url=url,
+                headers={} if without_headers else kwargs.pop("headers", {}),
+                **kwargs,
             )
-        except RequestsError as e:
-            my_logger.error(e)
+        except Exception as e:
+            logger.error(e)
             raise e
 
-    head = partialmethod(request, "HEAD")
-    get = partialmethod(request, "GET")
-    post = partialmethod(request, "POST")
-    put = partialmethod(request, "PUT")
-    patch = partialmethod(request, "PATCH")
-    delete = partialmethod(request, "DELETE")
-    options = partialmethod(request, "OPTIONS")
-
     @abstractmethod
-    async def get_coin_price(self, coin: str | Coin = 'ETH') -> Decimal:
+    async def get_coin_price(self, coin: str | Coin = "ETH") -> Decimal:
         pass
 
     @abstractmethod
-    async def get_funding_balance(self, user: User = None, coins: list[Coin] = None) -> list[Asset]:
+    async def get_funding_balance(
+        self, user: User = None, coins: list[Coin] = None
+    ) -> list[Asset]:
         pass
 
     @abstractmethod
-    async def get_trading_balance(self, user: User = None, coins: list[Coin] = None) -> list[Asset]:
+    async def get_trading_balance(
+        self, user: User = None, coins: list[Coin] = None
+    ) -> list[Asset]:
         pass
 
     @abstractmethod
@@ -85,14 +75,19 @@ class CEX(ABC):
         for user in users:
             await self.get_funding_balance(user)
             await self.get_trading_balance(user)
-            total_balance += (
-                    sum([el.available_balance * await self.get_coin_price(el.coin) for el in
-                         user.funding_account.assets]) +
-                    sum([el.available_balance * await self.get_coin_price(el.coin) for el in
-                         user.trading_account.assets])
+            total_balance += sum(
+                [
+                    el.available_balance * await self.get_coin_price(el.coin)
+                    for el in user.funding_account.assets
+                ]
+            ) + sum(
+                [
+                    el.available_balance * await self.get_coin_price(el.coin)
+                    for el in user.trading_account.assets
+                ]
             )
-            my_logger.info(user.funding_account)
-            my_logger.info(user.trading_account)
+            logger.info(user.funding_account)
+            logger.info(user.trading_account)
         return total_balance
 
     async def collect_on_funding_master(self):
@@ -101,21 +96,41 @@ class CEX(ABC):
         if not self.main_user.trading_account.assets:
             await self.get_trading_balance()
         for asset in self.main_user.trading_account.assets:
-            await self.transfer(self.main_user.trading_account, self.main_user.funding_account, asset)
+            await self.transfer(
+                self.main_user.trading_account, self.main_user.funding_account, asset
+            )
 
     async def transfer_from_sub_accounts_to_master(self):
         async def process_sub_account(sub_user: User):
             await self.get_funding_balance(sub_user)
             await self.get_trading_balance(sub_user)
 
-            await asyncio.gather(*[
-                self.transfer(
-                    from_account=sub_user.funding_account,
-                    to_account=self.main_user.funding_account,
-                    asset=asset
-                ) for asset in sub_user.funding_account
-            ])
+            await asyncio.gather(
+                *[
+                    self.transfer(
+                        from_account=sub_user.funding_account,
+                        to_account=self.main_user.funding_account,
+                        asset=asset,
+                    )
+                    for asset in sub_user.funding_account
+                ]
+            )
 
         await asyncio.gather(
-            *[process_sub_account(sub_user) for sub_user in await self.get_sub_account_list()]
+            *[
+                process_sub_account(sub_user)
+                for sub_user in await self.get_sub_account_list()
+            ]
         )
+
+
+class ProfileCEX(CEX, ABC):
+    def __init__(self, profile: Profile, config: SessionConfig = None, **kwargs):
+        config = config or SessionConfig()
+        config.log_info = f"{profile.id}"
+        super().__init__(
+            proxy=profile.proxy.proxy_string,
+            config=config,
+            **kwargs,
+        )
+        self.profile = profile

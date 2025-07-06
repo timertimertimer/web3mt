@@ -2,7 +2,7 @@ import asyncio
 from functools import partialmethod
 from pprint import pprint
 from web3mt.config import env
-from web3mt.utils import CustomAsyncSession
+from web3mt.utils import curl_cffiAsyncSession
 
 
 class Webshare:
@@ -10,11 +10,11 @@ class Webshare:
     URL = f'https://proxy.webshare.io/api/v{API_VERSION}'
 
     def __init__(self):
-        self.session = CustomAsyncSession()
+        self.session = curl_cffiAsyncSession()
 
     async def request(self, method: str, path: str, **kwargs):
         return await self.session.request(
-            method, f'{self.URL}/{path}', headers={"Authorization": f"Token {env.WEBSHARE_API_KEY}"}, **kwargs
+            method, f'{self.URL}/{path}', headers={"Authorization": f"Token {env.webshare_api_key}"}, **kwargs
         )
 
     head = partialmethod(request, "HEAD")

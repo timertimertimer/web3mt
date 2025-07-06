@@ -21,7 +21,7 @@ from examples.dex.evm.sahara.config import retry_count
 from examples.dex.evm.sahara.models import TextQuestion
 from web3mt.config import env
 from web3mt.onchain.evm.models import Chain
-from web3mt.utils import FileManager, my_logger as logger, sleep
+from web3mt.utils import FileManager, logger, sleep
 from web3mt.utils.db import create_db_instance
 
 
@@ -152,7 +152,7 @@ class Conversation:
                     messages=self.history,
                     web_search=False,
                     proxy=(
-                        env.ROTATING_PROXY
+                        env.rotating_proxy
                         if self._use_rotating_proxy_for_gpt
                         else random.choice(all_proxies).proxy_string
                     )
@@ -255,7 +255,7 @@ def show_and_save_stats(account_id, stats):
 
 
 async def solve_captcha(log_info: str, url: str) -> str | None:
-    solver = Solver(Service.TWOCAPTCHA, env.TWO_CAPTCHA_API_KEY)
+    solver = Solver(Service.TWOCAPTCHA, env.two_captcha_api_key)
     logger.info(f'{log_info} | Solving captcha')
     for i in range(retry_count):
         try:

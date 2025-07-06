@@ -3,9 +3,8 @@ from dataclasses import dataclass
 from _decimal import Decimal, InvalidOperation
 from eth_utils import to_checksum_address
 
-from web3mt.config import env
 from web3mt.models import Coin
-from web3mt.utils import format_number, my_logger as logger
+from web3mt.utils import format_number, logger
 from typing import Union, TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -587,7 +586,7 @@ Sepolia = Chain(
 
 Arbitrum = Chain(
     name="Arbitrum One",
-    rpc="https://1rpc.io/arb",
+    rpc="https://arbitrum.gateway.tenderly.co/1RhHTwPZOQv3RtsoB0EJ51",
     chain_id=42161,
     explorer="https://arbiscan.io/",
     eip1559_tx=True,
@@ -622,7 +621,7 @@ Polygon = Chain(
     explorer="https://polygonscan.com/",
     eip1559_tx=True,
 )
-Polygon.native_token.symbol = "MATIC"
+Polygon.native_token.symbol = "POL"
 Mumbai = Chain(
     name="Mumbai",
     rpc="https://polygon-testnet.public.blastapi.io",
@@ -630,11 +629,11 @@ Mumbai = Chain(
     explorer="https://mumbai.polygonscan.com/",
     eip1559_tx=True,
 )
-Mumbai.native_token.symbol = "MATIC"
+Mumbai.native_token.symbol = "POL"
 
 Avalanche = Chain(
     name="Avalanche C-Chain",
-    rpc="https://rpc.ankr.com/avalanche/",
+    rpc="https://rpc.ankr.com/avalanche/192d48a1a5b6c9408d2ef50d94e8fcc92902a511cf08e658473feca9f30650b9",
     chain_id=43114,
     explorer="https://snowtrace.io/",
     eip1559_tx=True,
@@ -660,7 +659,7 @@ opBNB = Chain(
 opBNB.native_token.symbol = "BNB"
 
 BSC = Chain(
-    name="BNB",
+    name="BSC",
     rpc="https://1rpc.io/bnb",
     chain_id=56,
     explorer="https://bscscan.com/",

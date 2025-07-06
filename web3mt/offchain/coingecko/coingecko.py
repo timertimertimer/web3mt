@@ -3,12 +3,12 @@ from decimal import Decimal
 from pathlib import Path
 from web3mt.config import env
 from web3mt.models import Coin
-from web3mt.utils import CustomAsyncSession
+from web3mt.utils import curl_cffiAsyncSession
 from web3mt.utils import FileManager
-from web3mt.utils.custom_sessions import SessionConfig
+from web3mt.utils.http_sessions import SessionConfig
 
 
-class CoinGecko(CustomAsyncSession):
+class CoinGecko(curl_cffiAsyncSession):
     URL = 'https://api.coingecko.com/api/v3/'
     LOCAL_STORAGE = Path(__file__).parent / 'coins.json'
 
@@ -19,8 +19,8 @@ class CoinGecko(CustomAsyncSession):
 
     def __init__(self):
         super().__init__(
-            env.DEFAULT_PROXY, SessionConfig('CoinGecko'),
-            headers={'x-cg-demo-api-key': env.COINGECKO_API_KEY}
+            env.default_proxy, SessionConfig('CoinGecko'),
+            headers={'x-cg-demo-api-key': env.coingecko_api_key}
         )
 
     async def _get_coins_list(self, include_contracts_in_response: bool = True) -> list:

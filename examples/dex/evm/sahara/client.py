@@ -18,7 +18,7 @@ from examples.dex.evm.sahara.utils import (
 from web3mt.config import env
 from web3mt.dex.models import DEX
 from web3mt.onchain.evm.client import BaseClient
-from web3mt.utils import my_logger as logger, CustomAsyncSession, sleep, FileManager
+from web3mt.utils import logger, curl_cffiAsyncSession, sleep, FileManager
 
 Account.enable_unaudited_hdwallet_features()
 
@@ -39,7 +39,7 @@ class SaharaClient(DEX):
         self._use_rotating_proxy_for_gpt = use_rotating_proxy_for_gpt
         self._save_session = save_session
         self.account = account
-        session = CustomAsyncSession(proxy=account.proxy, headers={'Referer': 'https://app.saharalabs.ai/'})
+        session = curl_cffiAsyncSession(proxy=account.proxy, headers={'Referer': 'https://app.saharalabs.ai/'})
         if self.account.session_token:
             session.headers.update({'Authorization': f'Bearer {self.account.session_token}'})
         session.config.log_info = str(account.account_id)
@@ -49,13 +49,13 @@ class SaharaClient(DEX):
             chain=SaharaAI_Testnet, proxy=account.proxy
         )
         super().__init__(session, client)
-        self.client.log_info = f'{account.account_id} | {self.client.log_info}'
+        self.evm_client.log_info = f'{account.account_id} | {self.evm_client.log_info}'
         self.user_info = dict()
         self.conversations = dict()
         self.tasks_stat = dict()
 
     def __str__(self):
-        return f'{self.account.account_id} | {self.client.account.address}'
+        return f'{self.account.account_id} | {self.evm_client.account.address}'
 
     def __repr__(self):
         return self.__str__()
@@ -94,7 +94,7 @@ class SaharaClient(DEX):
 
     async def _make_request(self, method: str = 'GET', url: str = '', **kwargs):
         try:
-            _, data = await self.session.request(method, url, **kwargs)
+            _, data = await self.http_session.make_request(method, url, **kwargs)
             return data
         except RequestsError as e:
             logger.error(f'{self} | {e}')
@@ -106,7 +106,7 @@ class SaharaClient(DEX):
     async def _generate_message(self):
         if not (data := await self.post(
                 f'{self.MAIN_DOMAIN}/v1/auth/generate-message',
-                json={'address': self.client.account.address, 'chainId': hex(SaharaAI_Testnet.chain_id)}
+                json={'address': self.evm_client.account.address, 'chainId': hex(SaharaAI_Testnet.chain_id)}
         )):
             return
         if not data['success']:
@@ -114,14 +114,14 @@ class SaharaClient(DEX):
             return
         data = data['data']
         if not data['ipAllowed']:
-            logger.warning(f'{self} | IP {self.client.proxy} not allowed')
+            logger.warning(f'{self} | IP {self.evm_client.proxy} not allowed')
             return
         return data['message']
 
     async def login(self) -> bool:
         if not (message := await self._generate_message()):
             return False
-        signature = self.client.sign(message)
+        signature = self.evm_client.sign(message)
         pubkey = recover_public_key(message, signature)
         if not (data := await self.post(f'{self.MAIN_DOMAIN}/v1/auth/login', json=dict(
                 message=message, pubkey=pubkey, signature='0x' + signature, role=7, walletType="io.rabby"
@@ -135,16 +135,16 @@ class SaharaClient(DEX):
         token = data['token']
         self.user_info = data['user']
         self.account.session_token = token
-        self.session.headers.update({'Authorization': f'Bearer {token}'})
+        self.http_session.headers.update({'Authorization': f'Bearer {token}'})
         return True
 
     async def profile(self):
         while True:
             try:
-                _, data = await self.session.get(f'{self.API_URL}/users/v3/profile')
+                _, data = await self.http_session.get(f'{self.API_URL}/users/v3/profile')
                 break
             except RequestsError as e:
-                self.session.headers.pop('Authorization', None)
+                self.http_session.headers.pop('Authorization', None)
                 if not (await self.login()):
                     return
         if not data['success']:
@@ -170,7 +170,7 @@ class SaharaClient(DEX):
         return True
 
     async def get_tasks(self, status: str):
-        _, data = await self.session.get(
+        _, data = await self.http_session.get(
             f'{self.API_URL}/jobs/jobs',
             params=dict(sortType='createdAtDesc', jobType='individual', status=status, limit=20, page=1)
         )
@@ -201,7 +201,7 @@ class SaharaClient(DEX):
         await update_exam_storage()
 
     async def get_new_tasks(self):
-        _, data = await self.session.get(
+        _, data = await self.http_session.get(
             f'{self.API_URL}/jobs/market/individuals', params=dict(sortType='earliest', limit=20, page=1)
         )
         if not data['success']:
@@ -220,7 +220,7 @@ class SaharaClient(DEX):
             return filtered_data
 
     async def join_task(self, task_id: int, task_name: str = None):
-        _, data = await self.session.post(f'{self.API_URL}/jobs/join/{task_id}/individual')
+        _, data = await self.http_session.post(f'{self.API_URL}/jobs/join/{task_id}/individual')
         if not data['success']:
             logger.error(f'{self} | Something went wrong: {data}')
             return
@@ -255,7 +255,7 @@ class SaharaClient(DEX):
             answers_storage[exam_id] = question_and_answers
 
     async def join_exam(self, exam_id: int):
-        _, data = await self.session.post(f'{self.API_URL}/individuals/join/{exam_id}/exam')
+        _, data = await self.http_session.post(f'{self.API_URL}/individuals/join/{exam_id}/exam')
         if not data['success']:
             logger.error(f'{self} | Something went wrong: {data}')
             return
@@ -263,7 +263,7 @@ class SaharaClient(DEX):
             return data
 
     async def get_exam_status(self, exam_id: int) -> bool | None:
-        _, data = await self.session.get(f'{self.API_URL}/individuals/exam/{exam_id}/status')
+        _, data = await self.http_session.get(f'{self.API_URL}/individuals/exam/{exam_id}/status')
         if not data['success']:
             logger.error(f'{self} | Something went wrong: {data}')
             return
@@ -271,7 +271,7 @@ class SaharaClient(DEX):
             return data
 
     async def get_exam_task_id(self, exam_id: int):
-        _, data = await self.session.post(f'{self.API_URL}/individuals/exam/{exam_id}/tasks')
+        _, data = await self.http_session.post(f'{self.API_URL}/individuals/exam/{exam_id}/tasks')
         if not data['success']:
             logger.error(f'{self} | Something went wrong: {data}')
             return
@@ -279,7 +279,7 @@ class SaharaClient(DEX):
             return data[0]['task']['id']
 
     async def submit_exam_answers(self, exam_id: int, task_id: int, answers: list[dict], task_name: str = None):
-        _, data = await self.session.post(f'{self.API_URL}/individuals/exam/{exam_id}/submit-answers', json=dict(
+        _, data = await self.http_session.post(f'{self.API_URL}/individuals/exam/{exam_id}/submit-answers', json=dict(
             data=[dict(submitAnswer=dict(answers=answers, feedback=''), taskId=task_id)]
         ))
         if not data['success']:
@@ -291,7 +291,7 @@ class SaharaClient(DEX):
             return accuracy
 
     async def get_exam_questions_and_task_id(self, exam_id: int) -> tuple[list[dict], int] | None:
-        _, data = await self.session.get(f'{self.API_URL}/batches/{exam_id}/labeling-tasks')
+        _, data = await self.http_session.get(f'{self.API_URL}/batches/{exam_id}/labeling-tasks')
         if not data['success']:
             logger.error(f'{self} | Something went wrong: {data}')
             return
@@ -384,7 +384,7 @@ class SaharaClient(DEX):
 
     async def get_job(self, job_id: int):
         try:
-            _, data = await self.session.get(f'{self.API_URL}/jobs/{job_id}/individual')
+            _, data = await self.http_session.get(f'{self.API_URL}/jobs/{job_id}/individual')
         except RequestsError as e:
             logger.error(f'{self} | {e}')
             return
@@ -414,7 +414,7 @@ class SaharaClient(DEX):
                 response = await gpt_client.chat.completions.create(
                     model="gpt-4o-mini", web_search=False, stream=False,
                     proxy=(
-                        env.ROTATING_PROXY
+                        env.rotating_proxy
                         if self._use_rotating_proxy_for_gpt
                         else random.choice(all_proxies).proxy_string
                     ),
@@ -454,7 +454,7 @@ class SaharaClient(DEX):
                     response = await gpt_client.chat.completions.create(
                         model="gpt-4o-mini", web_search=False, stream=False,
                         proxy=(
-                            env.ROTATING_PROXY
+                            env.rotating_proxy
                             if self._use_rotating_proxy_for_gpt
                             else random.choice(all_proxies).proxy_string
                         ),
@@ -568,7 +568,7 @@ class SaharaClient(DEX):
                         response = await gpt_client.chat.completions.create(
                             model="gpt-4o-mini", web_search=False, stream=False,
                             proxy=(
-                                env.ROTATING_PROXY
+                                env.rotating_proxy
                                 if self._use_rotating_proxy_for_gpt
                                 else random.choice(all_proxies).proxy_string
                             ),
@@ -614,7 +614,7 @@ class SaharaClient(DEX):
         await self.submit_review(hp_reviews, reviews, job_name, job_id)
 
     async def get_questions(self, job_id: int) -> list[dict] | None:
-        _, data = await self.session.get(f'{self.API_URL}/jobs/{job_id}/labeling-tasks')
+        _, data = await self.http_session.get(f'{self.API_URL}/jobs/{job_id}/labeling-tasks')
         if not data['success']:
             logger.error(f'{self} | Something went wrong: {data}')
             return
@@ -627,7 +627,7 @@ class SaharaClient(DEX):
 
     async def get_review_answers(self, job_id: int, task_name: str) -> tuple[list, list, list] | bool | None:
         try:
-            _, data = await self.session.get(f'{self.API_URL}/jobs/{job_id}/take-review-jobs/for-individuals')
+            _, data = await self.http_session.get(f'{self.API_URL}/jobs/{job_id}/take-review-jobs/for-individuals')
         except RequestsError as e:
             if 'User workloads exceeded' in str(e):
                 logger.debug(f'{self} | Limit reached for "{task_name}" (Reviewer) task')
@@ -684,7 +684,7 @@ class SaharaClient(DEX):
 
     async def get_annotating_answers(self, job_id: int, task_name: str) -> tuple[list, list, list, list] | bool | None:
         try:
-            _, data = await self.session.get(f'{self.API_URL}/jobs/{job_id}/take-job/for-individuals')
+            _, data = await self.http_session.get(f'{self.API_URL}/jobs/{job_id}/take-job/for-individuals')
         except RequestsError as e:
             if 'User workloads exceeded' in str(e):
                 logger.debug(f'{self} | Limit reached for "{task_name}" (Labeler) task')
@@ -717,7 +717,7 @@ class SaharaClient(DEX):
         payload = dict(captchaToken="", hpReviews=hp_reviews, reviews=reviews)
         for i in range(retry_count):
             try:
-                _, data = await self.session.post(f'{self.API_URL}/review-sessions/submit-revisions', json=payload)
+                _, data = await self.http_session.post(f'{self.API_URL}/review-sessions/submit-revisions', json=payload)
                 break
             except RequestsError as e:
                 logger.warning(f'{self} | {e}')
@@ -738,7 +738,7 @@ class SaharaClient(DEX):
         ), submitAnswers=answers, submitHPAnswers=hp_answers)
         logger.info(payload)
         try:
-            _, data = await self.session.post(f'{self.API_URL}/task-sessions/submit-answers', json=payload)
+            _, data = await self.http_session.post(f'{self.API_URL}/task-sessions/submit-answers', json=payload)
         except RequestsError as e:
             logger.error(f'{self} | {e}')
             return
@@ -752,7 +752,7 @@ class SaharaAchievementsClient(SaharaClient):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.level_achievement_manager_contract = (
-            self.client.w3.eth.contract(to_checksum_address(contract_address), abi=abi)
+            self.evm_client.w3.eth.contract(to_checksum_address(contract_address), abi=abi)
         )
 
     async def claim_and_mint_in_progress_achievements(self):
@@ -791,7 +791,7 @@ class SaharaAchievementsClient(SaharaClient):
         query = await FileManager.read_txt_async(queries_folder / 'achievement_task_progress_list.graphql')
         payload = {
             "operationName": "AchievementTaskProgressList",
-            "variables": {"achievementId": achievement_id, "taskIds": task_ids, "user": self.client.account.address},
+            "variables": {"achievementId": achievement_id, "taskIds": task_ids, "user": self.evm_client.account.address},
             "query": query
         }
         data = await self.post(self.GRAPHQL_URL, json=payload)
@@ -808,7 +808,7 @@ class SaharaAchievementsClient(SaharaClient):
         query = await FileManager.read_txt_async(queries_folder / 'achievement_daily_task_progress_list.graphql')
         payload = {
             "operationName": "AchievementDailyTaskProgressList",
-            "variables": {"user": self.client.account.address, "taskId": task_id, "achievementId": achievement_id},
+            "variables": {"user": self.evm_client.account.address, "taskId": task_id, "achievementId": achievement_id},
             "query": query
         }
         data = await self.post(self.GRAPHQL_URL, json=payload)
@@ -828,7 +828,7 @@ class SaharaAchievementsClient(SaharaClient):
     async def claim_exp_from_achievement_task_reward(
             self, achievement_id: int, task_id: str, exp_amount: int, achievement_name: str
     ):
-        ok, tx_with_hash = await self.client.tx(
+        ok, tx_with_hash = await self.evm_client.tx(
             self.level_achievement_manager_contract.address, f'Claim {exp_amount} EXP for {achievement_name}',
             self._get_claim_exp_from_achievement_task_reward_data(achievement_id, task_id)
         )
@@ -837,7 +837,7 @@ class SaharaAchievementsClient(SaharaClient):
     async def claim_exp_from_time_range_task(
             self, achievement_id: int | str, task_id: str, timestamp: int | str, exp_amount: int, achievement_name: str
     ):
-        ok, tx_with_hash = await self.client.tx(
+        ok, tx_with_hash = await self.evm_client.tx(
             self.level_achievement_manager_contract.address, f'Claim {exp_amount} EXP for {achievement_name}',
             self.level_achievement_manager_contract.encode_abi(
                 'claimExpFromTimeRangeTask', args=[int(achievement_id), task_id, int(timestamp)]
@@ -848,7 +848,7 @@ class SaharaAchievementsClient(SaharaClient):
     async def mint_achievement(self, achievement_id: str, task_id: str, achievement_name: str):
         claim_exp_call = self._get_claim_exp_from_achievement_task_reward_data(achievement_id, task_id)
         mint_nft_call = self.level_achievement_manager_contract.encode_abi('mintNFT', args=[int(achievement_id)])
-        ok, tx_with_hash = await self.client.tx(
+        ok, tx_with_hash = await self.evm_client.tx(
             self.level_achievement_manager_contract.address, f'Mint {achievement_name}',
             self.level_achievement_manager_contract.encode_abi('multicall', args=[[claim_exp_call, mint_nft_call]])
         )
@@ -857,7 +857,7 @@ class SaharaAchievementsClient(SaharaClient):
     async def check_level(self):
         query = await FileManager.read_txt_async(queries_folder / 'level_info.graphql')
         payload = {
-            "operationName": "LevelInfo", "variables": {"$account": self.client.account.address}, "query": query
+            "operationName": "LevelInfo", "variables": {"$account": self.evm_client.account.address}, "query": query
         }
         data = await self.post(self.GRAPHQL_URL, json=payload)
         info = data['data']['expUpdatedMutables']
@@ -869,7 +869,7 @@ class SaharaAchievementsClient(SaharaClient):
                 current_level += 1
 
     async def upgrade_level(self):
-        ok, tx_with_hash = await self.client.tx(
+        ok, tx_with_hash = await self.evm_client.tx(
             self.level_achievement_manager_contract.address, f'Upgrade level',
             self.level_achievement_manager_contract.encode_abi('upgradeLevel')
         )

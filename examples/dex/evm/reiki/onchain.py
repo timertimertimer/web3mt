@@ -3,7 +3,7 @@ from web3 import Web3
 
 from web3mt.onchain.evm.client import ProfileClient
 from web3mt.onchain.evm.models import Token, BSC, opBNB
-from web3mt.utils import FileManager, my_logger
+from web3mt.utils import FileManager, logger
 
 contract_address = '0xa4Aff9170C34c0e38Fed74409F5742617d9E80dc'
 
@@ -19,10 +19,10 @@ async def mint_profile(profile: Profile) -> str | bool:
     client = ProfileClient(chain=BSC, profile=profile)
     client.default_abi = FileManager.read_json('abi.json')['profile']
     if await is_minted(client):
-        my_logger.success(f'{profile.id} | {client.account.address} | Already minted')
+        logger.success(f'{profile.id} | {client.account.address} | Already minted')
         return True
     if (await client.balance_of()).ether < 0.001:
-        my_logger.info(f'{profile.id} | {profile.evm_address} | No balance, skipping')
+        logger.info(f'{profile.id} | {profile.evm_address} | No balance, skipping')
         return False
     contract = client.w3.eth.contract(
         address=Web3.to_checksum_address(contract_address),

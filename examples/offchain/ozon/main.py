@@ -9,8 +9,8 @@ from random import choice
 from bs4 import BeautifulSoup
 from pathlib import Path
 from examples.offchain.ozon.data import proxies, parse_cookies
-from web3mt.utils import CustomAsyncSession, my_logger
-from web3mt.utils.custom_sessions import SessionConfig
+from web3mt.utils import curl_cffiAsyncSession, logger
+from web3mt.utils.http_sessions import SessionConfig
 
 
 def save_cookies(cookies, file_path: Path):
@@ -39,7 +39,7 @@ banks = [
 ts = 1730908800 - 10
 
 
-class Ozon(CustomAsyncSession):
+class Ozon(curl_cffiAsyncSession):
     DEFAULT_HEADERS = {
         'Accept': '*/*',
         'Accept-Language': 'ru',
@@ -114,7 +114,7 @@ class Ozon(CustomAsyncSession):
         #             save_cookies(self.cookies.jar._cookies, self.file_path.with_suffix('.pkl'))
         #         break
         #     except Exception as e:
-        #         my_logger.warning(f'{self.config.log_info} | {e}')
+        #         logger.warning(f'{self.config.log_info} | {e}')
         #         await self.generate_cookies()
         #         update_local_data = True
 
@@ -125,7 +125,7 @@ class Ozon(CustomAsyncSession):
                 await self.get_user()
                 await self.try_buy()
             except Exception as e:
-                my_logger.warning(f'{self.config.log_info} | {e}')
+                logger.warning(f'{self.config.log_info} | {e}')
 
     async def generate_cookies(self):
         timestamp = datetime.utcnow().isoformat(timespec='milliseconds') + 'Z'
@@ -160,13 +160,13 @@ class Ozon(CustomAsyncSession):
         _, data = await self.get(
             f'{self.URL}/composer-api.bx/_action/currentLocation', params={'ignoreclient': True}
         )
-        my_logger.debug(data)
+        logger.debug(data)
         return data
 
     async def get_user(self) -> dict:
         data = {"profile": True, "email": True, "phone": True}
         _, data = await self.post(f'{self.URL}/composer-api.bx/_action/getUserV2', json=data)
-        my_logger.debug(data)
+        logger.debug(data)
         self.config.log_info = data['profile'].get('firstName', data['userId'])
         return data
 
@@ -225,7 +225,7 @@ class Ozon(CustomAsyncSession):
             if not links:
                 links = set(await self.home())
             link = await self.move_to_product(link or links.pop())
-        my_logger.success(f'{self.config.log_info} | Ананасы собраны')
+        logger.success(f'{self.config.log_info} | Ананасы собраны')
         await self.count_pineapples()
 
     async def count_pineapples(self) -> tuple[int, int]:
@@ -250,7 +250,7 @@ class Ozon(CustomAsyncSession):
         if soup.find('div', class_='r0q_29'):
             return 0, 0
         count, total = [int(el) for el in soup.find('div', class_='zp8_29 z8p_29 qr0_29').get_text().split('/')]
-        my_logger.info(f'{self.config.log_info} | Pineapples: {count}/{total}')
+        logger.info(f'{self.config.log_info} | Pineapples: {count}/{total}')
         return count, total
 
     async def move_to_product(self, link: str) -> list[str] | None:
@@ -276,7 +276,7 @@ class Ozon(CustomAsyncSession):
             )
             match = re.search(r'\d+', _data['notificationBar']['title'])
             self.count += int(match.group()) if match else 1
-            my_logger.success(f'{self.config.log_info} | {_data["notificationBar"]["title"]}. Теперь их {self.count}')
+            logger.success(f'{self.config.log_info} | {_data["notificationBar"]["title"]}. Теперь их {self.count}')
 
         for i in range(3):
             recommendations_state_id = ''
@@ -301,7 +301,7 @@ class Ozon(CustomAsyncSession):
             await self.add_to_cart(product)
 
         some_product = choice(list(some_products))
-        my_logger.info(f'{self} | Trying to buy {some_product}')
+        logger.info(f'{self} | Trying to buy {some_product}')
         await self.buy(some_product)
 
     async def try_buy(self):
@@ -311,13 +311,13 @@ class Ozon(CustomAsyncSession):
         while True:
             now = int(datetime.now().timestamp())
             if now < ts:
-                my_logger.info(f'Waiting for the right time. {str(now)}')
+                logger.info(f'Waiting for the right time. {str(now)}')
                 await asyncio.sleep(1)
             else:
                 break
         while True:
             for product in buy_products:
-                my_logger.info(f'{self} | Trying to buy {product}')
+                logger.info(f'{self} | Trying to buy {product}')
                 await self.buy(product)
 
     async def check_cart(self, need_to_buy: set) -> set:
@@ -335,7 +335,7 @@ class Ozon(CustomAsyncSession):
         _, data = await self.post(
             f'{self.URL}/composer-api.bx/_action/addToCart', json=[{"forStars": False, "id": product_id, "quantity": 1}]
         )
-        my_logger.info(data)
+        logger.info(data)
 
     async def buy(self, product_id: int):
         await self.go_checkout(product_id)
@@ -352,24 +352,24 @@ class Ozon(CustomAsyncSession):
                 "items": [{"id": str(product_id), "quantity": 1, "selected_delivery_schema": "retail"}]
             }
         )
-        my_logger.info(data)
+        logger.info(data)
 
     async def bank_list(self):
         _, data = await self.post(
             f'{self.URL}/composer-api.bx/page/json/v2', params={'url': '/gocheckout/popularBankList'},
             json=self.DEVICE_DATA
         )
-        my_logger.info(data)
+        logger.info(data)
 
     async def create_order(self, bank):
         # self.config.sleep_after_request = False
-        my_logger.info(f'{bank} {self.proxies["all"]}')
+        logger.info(f'{bank} {self.proxies["all"]}')
         _, data = await self.post(
             f'{self.URL}/composer-api.bx/_action/v2/createOrder', json={'bankId': bank}
         )
         if data:
             if not data['error']:
-                my_logger.success(f'{self.config.log_info} | {data}')
+                logger.success(f'{self.config.log_info} | {data}')
                 return
         self.update_proxy(choice(proxies))
 

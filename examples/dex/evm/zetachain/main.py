@@ -13,7 +13,7 @@ from examples.dex.evm.zetachain.db import update_stats, create_table
 from web3mt.cex import OKX
 from web3mt.onchain.evm.client import ProfileClient, ClientConfig
 from web3mt.onchain.evm.models import ZetaChain, TokenAmount, BSC, Token, DefaultABIs
-from web3mt.utils import set_windows_event_loop_policy, my_logger, sleep, ProfileSession
+from web3mt.utils import set_windows_event_loop_policy, logger, sleep, Profilecurl_cffiAsyncSession
 
 load_dotenv()
 set_windows_event_loop_policy()
@@ -32,7 +32,7 @@ class ZetachainHub(ProfileClient):
             profile=profile,
             config=ClientConfig(delay_between_requests=delay_between_rpc_requests)
         )
-        self.session = ProfileSession(
+        self.session = Profilecurl_cffiAsyncSession(
             profile, headers={
                 'Origin': 'https://hub.zetachain.com',
                 'Referer': 'https://hub.zetachain.com/'
@@ -96,7 +96,7 @@ class ZetachainHub(ProfileClient):
             abi=invitation_manager_abi
         )
         if await contract.functions.hasBeenVerified(self.account.address).call():
-            my_logger.info(f"{self.log_info} | Already enrolled...")
+            logger.info(f"{self.log_info} | Already enrolled...")
             return
         await sleep(delay_between_rpc_requests, echo=False)
         await self.tx(
@@ -112,7 +112,7 @@ class ZetachainHub(ProfileClient):
                     url="https://xp.cl04.zetachain.com/v1/enroll-in-zeta-xp",
                     json={"address": self.account.address}
                 )
-                my_logger.info(f"{self.log_info} | Verify enroll status: {data['isUserVerified']}")
+                logger.info(f"{self.log_info} | Verify enroll status: {data['isUserVerified']}")
                 return
             except RequestsError:
                 return
@@ -120,7 +120,7 @@ class ZetachainHub(ProfileClient):
 
     async def ultiverse_explore(self):
         name = '"Explore" any ZetaChain network event on Ultiverse'
-        session = ProfileSession(
+        session = Profilecurl_cffiAsyncSession(
             self.profile, headers={
                 'Origin': 'https://pilot-zetachain.ultiverse.io',
                 'Referer': 'https://pilot-zetachain.ultiverse.io/',
@@ -194,7 +194,7 @@ class ZetachainHub(ProfileClient):
 
     async def ultiverse_badge(self):
         async def get_mint_data():
-            session = ProfileSession(
+            session = Profilecurl_cffiAsyncSession(
                 self.profile, headers={
                     'Origin': 'https://mission.ultiverse.io',
                     'Referer': 'https://mission.ultiverse.io/',
@@ -230,7 +230,7 @@ class ZetachainHub(ProfileClient):
                         )
                         if data['success']:
                             return data['data']
-                        my_logger.warning(f'{self.log_info} | {data["err"]} - {badge["name"]}')
+                        logger.warning(f'{self.log_info} | {data["err"]} - {badge["name"]}')
 
         mint_data = await get_mint_data()
         if not mint_data:
@@ -436,7 +436,7 @@ class ZetachainHub(ProfileClient):
         stZETA_balance = await self.balance_of(token=Token(address=TOKENS['stZETA'], chain=ZetaChain))
         if amount:
             if stZETA_balance.wei >= amount:
-                my_logger.info(f'{self.log_info} | Already staking {stZETA_balance} stZETA')
+                logger.info(f'{self.log_info} | Already staking {stZETA_balance} stZETA')
                 return
         await sleep(delay_between_rpc_requests, echo=False)
         await self.tx(
@@ -452,7 +452,7 @@ class ZetachainHub(ProfileClient):
         async def wrap_zeta(amount: int):
             WZETA_balance = await self.balance_of(token=Token(address=TOKENS['WZETA'], chain=ZetaChain))
             if WZETA_balance.wei >= amount:
-                my_logger.info(f'{self.log_info} | Already wrapped {WZETA_balance} WZETA')
+                logger.info(f'{self.log_info} | Already wrapped {WZETA_balance} WZETA')
                 return
             await sleep(delay_between_rpc_requests, echo=False)
             await self.tx(
@@ -575,7 +575,7 @@ class ZetachainHub(ProfileClient):
     async def claim_tasks(self) -> list[str]:
         completed_tasks, available_tasks = await self.check_tasks()
         if not completed_tasks:
-            my_logger.info(f"{self.log_info} | Nothing to claim")
+            logger.info(f"{self.log_info} | Nothing to claim")
         for task in completed_tasks:
             claim_data = {
                 "address": self.account.address,
@@ -597,7 +597,7 @@ class ZetachainHub(ProfileClient):
                     return []
                     # await sleep(600, 800, profile_id=self.profile.id)
 
-            my_logger.success(f"{self.log_info} | Claimed {task} task")
+            logger.success(f"{self.log_info} | Claimed {task} task")
             await sleep(delay_between_http_requests, echo=False)
         return available_tasks
 
@@ -620,20 +620,20 @@ class ZetachainHub(ProfileClient):
 async def process_account(profile: Profile) -> dict | None:
     async with ZetachainHub(profile) as zh:
         # await zh.ultiverse_explore()
-        my_logger.info(f'{zh.log_info} | Balance {await zh._native_balance()} ZETA')
+        logger.info(f'{zh.log_info} | Balance {await zh._native_balance()} ZETA')
         await zh.enroll()
         await sleep(delay_between_http_requests, echo=False)
         await zh.enroll_verify()
         await sleep(delay_between_http_requests, echo=False)
         available_quests = await zh.claim_tasks()
-        my_logger.info(f'{zh.log_info} | Available tasks: {", ".join(available_quests)}')
+        logger.info(f'{zh.log_info} | Available tasks: {", ".join(available_quests)}')
         await sleep(delay_between_http_requests, echo=False)
         if choice == 1:
             for task in random.sample(available_quests, len(available_quests)):
                 if zh.tasks[task]:
                     await zh.tasks[task]()
                     await sleep(random.uniform(30, 60))
-        my_logger.success(f'{zh.log_info} | All tasks claimed')
+        logger.success(f'{zh.log_info} | All tasks claimed')
         stats = await zh.get_stats()
         if stats:
             return {'address': zh.account_.address, **stats}
@@ -657,7 +657,7 @@ async def swap_btc_to_zeta(profile: Profile):
             'Origin': 'https://nativex.finance',
             'Referer': 'https://nativex.finance/'
         }
-        async with ProfileSession(profile, headers=headers) as session:
+        async with Profilecurl_cffiAsyncSession(profile, headers=headers) as session:
             while True:
                 params = {
                     'src_chain': 'zetachain', 'dst_chain': 'zetachain',
@@ -711,7 +711,7 @@ async def main():
 
 if __name__ == "__main__":
     zeta_price, bnb_price = asyncio.run(zeta_and_bnb_price())
-    my_logger.info(f'ZETA: {zeta_price}, BNB: {bnb_price}')
+    logger.info(f'ZETA: {zeta_price}, BNB: {bnb_price}')
     choice = int(
         input(
             "\n----------------------"

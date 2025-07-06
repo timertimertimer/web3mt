@@ -2,7 +2,7 @@ import asyncio
 import random
 from datetime import timedelta
 
-from web3mt.utils import my_logger
+from web3mt.utils import logger
 from web3mt.config import DEV
 
 
@@ -21,7 +21,7 @@ async def sleep(
         hours_str = f"{hours} hours" if hours else ''
         minutes_str = f"{minutes} minutes" if minutes else ''
         seconds_str = f"{seconds} seconds" if seconds else ''
-        my_logger.info(
+        logger.info(
             f"{log_info} | 💤 Sleeping for "
             f"{', '.join([el for el in [days_str, hours_str, minutes_str, seconds_str] if el])}"
         )

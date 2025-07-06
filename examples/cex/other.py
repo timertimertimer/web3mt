@@ -1,14 +1,17 @@
 import asyncio
 
 from web3db import DBHelper, Profile
+from web3db.core import create_db_instance
 
+from web3mt.cex.binance.client import Binance, ProfileBinance
 from web3mt.cex.bybit.bybit import Bybit
 from web3mt.cex.okx.okx import OKX
 from web3mt.config import env
 from web3mt.onchain.evm.models import Ethereum
-from web3mt.utils import my_logger as logger
+from web3mt.utils import logger
+from web3mt.utils.http_sessions import SessionConfig
 
-db = DBHelper(env.LOCAL_CONNECTION_STRING)
+db = create_db_instance()
 
 
 async def get_total_balance():
@@ -29,5 +32,15 @@ async def collect_on_main():
     await OKX().collect_on_funding_master()
 
 
+async def binance():
+    profile: Profile = await db.get_row_by_id(1, Profile)
+    async with ProfileBinance(profile) as client:
+        balance_before = await client.get_total_balance()
+        for asset in client.main_user.trading_account:
+            await client.transfer_from_trading_to_funding(client.main_user, asset)
+        balance_after = await client.get_total_balance()
+        return balance_after
+
+
 if __name__ == "__main__":
-    asyncio.run(get_total_balance())
+    asyncio.run(binance())

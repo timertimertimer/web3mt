@@ -6,7 +6,7 @@ from bitcoinlib.keys import HDKey
 from bitcoinlib.transactions import Transaction, Output
 from httpx import AsyncClient
 
-from web3mt.utils import CustomAsyncSession
+from web3mt.utils import curl_cffiAsyncSession
 from web3mt.utils.logger import logger
 from web3mt.config import btc_env
 from web3mt.onchain.btc.models import BTCLikeAmount, Token
@@ -135,7 +135,7 @@ class Client(BitcoinRPC):
         return tx_hash
 
 
-class LitecoinSpace(CustomAsyncSession):
+class LitecoinSpace(curl_cffiAsyncSession):
     def __init__(self, base_api_url: str = "https://litecoinspace.org"):
         super().__init__(base_url=base_api_url)
 

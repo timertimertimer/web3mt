@@ -19,7 +19,7 @@ from web3db import Profile
 from web3db.utils import decrypt
 from web3mt.onchain.evm.models import *
 from web3mt.config import env, DEV
-from web3mt.utils import sleep, my_logger as logger
+from web3mt.utils import sleep, logger
 
 __all__ = [
     'TransactionParameters', 'ProfileClient', 'ClientConfig', 'BaseClient'
@@ -32,8 +32,8 @@ class TransactionParameters:
 
     def __init__(
             self,
-            to: str | None = env.DEFAULT_EVM_ADDRESS,
-            from_: str | None = env.DEFAULT_EVM_ADDRESS,
+            to: str | None = env.default_evm_address,
+            from_: str | None = env.default_evm_address,
             nonce: int | None = None,
             data: str | None = None,
             value: TokenAmount | int = TokenAmount(0),
@@ -154,7 +154,7 @@ class BaseClient:
             self,
             account: LocalAccount = None,
             chain: Chain = Ethereum,
-            proxy: str = env.DEFAULT_PROXY,
+            proxy: str = env.default_proxy,
             config: ClientConfig = ClientConfig(),
     ):
         self._chain = chain
@@ -232,7 +232,7 @@ class BaseClient:
         SleepAfterRequestMiddleware.echo = self.config.sleep_echo
         self.w3 = AsyncWeb3(
             # TODO: If rpc sends exception try to get another rpc from self._chain.rpc list
-            AsyncHTTPProvider(self._chain.rpc, request_kwargs={'timeout': 5, 'proxy': self._proxy}),
+            AsyncHTTPProvider(self._chain.rpc, request_kwargs={'timeout': 10, 'proxy': self._proxy}),
             modules={'eth': (AsyncEth,), 'net': (AsyncNet,)},
             middleware=[
                 AttributeDictMiddleware, ENSNameToAddressMiddleware,
@@ -277,8 +277,8 @@ class BaseClient:
         return token.price
 
     async def balance_of(
-            self, contract: AsyncContract = None, token: Token = None, owner_address: str = None, echo: bool = DEV,
-            remove_zero_from_echo: bool = DEV
+            self, contract: AsyncContract = None, token: Token = None, owner_address: str = None, echo: bool = False,
+            remove_zero_from_echo: bool = True
     ) -> TokenAmount:
         owner_address = owner_address or self.account.address
         token = token or self.chain.native_token
@@ -297,19 +297,18 @@ class BaseClient:
         return balance
 
     async def _native_balance(self, owner_address: str) -> TokenAmount:
+        balance = 0
         try:
             balance = await self.w3.eth.get_balance(to_checksum_address(owner_address))
         except (ClientHttpProxyError, ClientResponseError) as e:
             logger.error(
                 f'{self.log_info} | Couldn\'t fetch {self.chain.native_token.symbol} balance. {e.message or type(e)}'
             )
-            balance = 0
         except TimeoutError:
             logger.warning(f'{self.log_info} | Timeout. Maybe bad proxy: {self.proxy}')
-            balance = 0
         except Exception as e:
             pass
-        return TokenAmount(amount=balance, is_wei=True, token=Token(chain=self.chain))
+        return TokenAmount(amount=balance, is_wei=True, token=self.chain.native_token)
 
     async def wait_for_gwei(self):
         if self.chain.max_gwei and self.config.wait_for_gwei:
@@ -474,7 +473,7 @@ class ProfileClient(BaseClient):
             self,
             profile: Profile,
             chain: Chain = Ethereum,
-            encryption_password: str = env.PASSPHRASE,
+            encryption_password: str = env.passphrase,
             config: ClientConfig = ClientConfig(),
     ):
         self.profile = profile

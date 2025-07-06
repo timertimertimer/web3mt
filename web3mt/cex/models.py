@@ -7,21 +7,16 @@ from web3mt.models import Coin
 from web3mt.onchain.evm.models import TokenAmount
 from web3mt.utils import format_number
 
-__all__ = [
-    'Asset',
-    'User',
-    'Account',
-    'WithdrawInfo'
-]
+__all__ = ["Asset", "User", "Account", "WithdrawInfo"]
 
 
 class Asset:
     def __init__(
-            self,
-            coin: Coin,
-            available_balance: int | float | str | Decimal,
-            frozen_balance: int | float | str | Decimal,
-            total: int | float | str | Decimal
+        self,
+        coin: Coin,
+        available_balance: int | float | str | Decimal,
+        frozen_balance: int | float | str | Decimal,
+        total: int | float | str | Decimal,
     ) -> None:
         self.coin = coin
         self.available_balance = Decimal(available_balance)
@@ -30,8 +25,8 @@ class Asset:
 
     def __str__(self) -> str:
         return (
-            f'{self.format_total()} {self.coin.symbol} = '
-            f'{self.coin.price * self.total if self.coin.price else 0:.2f}$'
+            f"{self.format_total()} {self.coin.symbol} = "
+            f"{self.coin.price * self.total if self.coin.price else 0:.2f}$"
         )
 
     def __repr__(self):
@@ -43,8 +38,11 @@ class Asset:
     def __gt__(self, other):
         if isinstance(other, TokenAmount) and self.coin == other.token:
             return self.total > other.ether
-        if not isinstance(other, (Asset, TokenAmount)) or self.coin.symbol != other.coin.symbol:
-            raise TypeError(f'Cannot compare {other} with {repr(self)}')
+        if (
+            not isinstance(other, (Asset, TokenAmount))
+            or self.coin.symbol != other.coin.symbol
+        ):
+            raise TypeError(f"Cannot compare {other} with {repr(self)}")
         return self.total > other.total
 
     def __lt__(self, other):
@@ -64,9 +62,7 @@ class Account:
     NAME = None
     ACCOUNT_ID = None
 
-    def __init__(
-            self, user: 'User', assets: list[Asset] = None
-    ) -> None:
+    def __init__(self, user: "User", assets: list[Asset] = None) -> None:
         self.user = user
         self.assets = assets or []
 
@@ -79,9 +75,8 @@ class Account:
         return iter(self.assets)
 
     def __str__(self):
-        return (
-                f'{self.user} {self.NAME} balance: {self.balance:.2f}$' +
-                ('\n' + '\n'.join(map(str, self.assets)) if self.assets else '')
+        return f"{self.user} {self.NAME} balance: {self.balance:.2f}$" + (
+            "\n" + "\n".join(map(str, self.assets)) if self.assets else ""
         )
 
     def __repr__(self):
@@ -89,48 +84,61 @@ class Account:
 
     @property
     def balance(self) -> int | float | str | Decimal:
-        return sum(asset.total * asset.coin.price for asset in self.assets)
+        return sum(
+            asset.total * asset.coin.price if asset.coin.price else Decimal(0)
+            for asset in self.assets
+        )
 
 
 class User:
-    def __init__(self, cex: 'CEX', user_id: str = None):
+    def __init__(self, cex: "CEX", user_id: str = None):
         self.cex = cex
-        self.trading_account = account_factory(cex, 'Trading')(self)
-        self.funding_account = account_factory(cex, 'Funding')(self)
+        self.trading_account = account_factory(cex, "Trading")(self)
+        self.funding_account = account_factory(cex, "Funding")(self)
         self.user_id = user_id
 
     def __repr__(self):
-        return f'{self.cex} User {self.user_id or "Main"}'
+        return f"{self.cex} User {self.user_id or 'Main'}"
 
 
-def account_factory(cex: 'CEX', account_type: str) -> type(Account):
+def account_factory(cex: "CEX", account_type: str) -> type(Account):
     from web3mt.cex.bybit.models import Funding as BybitFunding, Spot as BybitTrading
     from web3mt.cex.okx.models import Funding as OKXFunding, Trading as OKXTrading
+    from web3mt.cex.binance.models import (
+        Funding as BinanceFunding,
+        Spot as BinanceTrading,
+    )
+
     account_type = account_type.lower()
     match cex.NAME:
-        case 'OKX':
-            if account_type == 'trading':
+        case "OKX":
+            if account_type == "trading":
                 return OKXTrading
-            elif account_type == 'funding':
+            elif account_type == "funding":
                 return OKXFunding
-        case 'Bybit':
-            if account_type == 'trading':
+        case "Bybit":
+            if account_type == "trading":
                 return BybitTrading
-            elif account_type == 'funding':
+            elif account_type == "funding":
                 return BybitFunding
+        case "Binance":
+            if account_type == "trading":
+                return BinanceTrading
+            elif account_type == "funding":
+                return BinanceFunding
     raise ValueError(f"Unknown account type {account_type} for CEX {cex.NAME}")
 
 
 class WithdrawInfo:
     def __init__(
-            self,
-            coin: Coin,
-            chain: str,
-            fee: int | float | str | Decimal,
-            minimum_withdrawal: int | float | str | Decimal,
-            maximum_withdrawal: int | float | str | Decimal,
-            need_tag: bool = False,
-            internal: bool = False,
+        self,
+        coin: Coin,
+        chain: str,
+        fee: int | float | str | Decimal,
+        minimum_withdrawal: int | float | str | Decimal,
+        maximum_withdrawal: int | float | str | Decimal,
+        need_tag: bool = False,
+        internal: bool = False,
     ):
         self.coin = coin
         self.chain = chain
@@ -142,11 +150,11 @@ class WithdrawInfo:
 
     def __repr__(self):
         return (
-            f'WithdrawInfo(chain={self.coin.symbol}-{self.chain}, fee={self.fee} {self.coin.symbol} '
-            f'({(self.fee * self.coin.price):.2f}$), minimum={self.minimum_withdrawal} {self.coin.symbol} '
-            f'({(self.minimum_withdrawal * self.coin.price):.2f}$), maximum={self.maximum_withdrawal} '
-            f'{self.coin.symbol} ({(self.maximum_withdrawal * self.coin.price):.2f}$), need tag={self.need_tag}, '
-            f'internal={self.internal})'
+            f"WithdrawInfo(chain={self.coin.symbol}-{self.chain}, fee={self.fee} {self.coin.symbol} "
+            f"({(self.fee * self.coin.price):.2f}$), minimum={self.minimum_withdrawal} {self.coin.symbol} "
+            f"({(self.minimum_withdrawal * self.coin.price):.2f}$), maximum={self.maximum_withdrawal} "
+            f"{self.coin.symbol} ({(self.maximum_withdrawal * self.coin.price):.2f}$), need tag={self.need_tag}, "
+            f"internal={self.internal})"
         )
 
     def __str__(self):

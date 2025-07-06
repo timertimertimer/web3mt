@@ -10,7 +10,7 @@ from web3db import Email, Profile
 from web3mt.utils import IMAPClient
 from web3mt.config import env
 from web3mt.utils.db import create_db_instance
-from web3mt.utils.logger import my_logger as logger
+from web3mt.utils.logger import logger
 
 
 def parse_message(message: Message):
@@ -63,7 +63,7 @@ db = create_db_instance()
 
 async def find_sahara(email: Email):
     async with semaphore:
-        async with IMAPClient(email, env.ROTATING_PROXY) as client:
+        async with IMAPClient(email, env.rotating_proxy) as client:
             messages = await client.get_inbox_messages()
             await db.edit(email)
         for message in messages:

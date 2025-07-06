@@ -1,11 +1,10 @@
 from abc import ABC
-from decimal import Decimal
 from pathlib import Path
 
 from web3mt.dex.models import DEX
 from web3mt.onchain.evm.client import TransactionParameters
 from web3mt.onchain.evm.models import TokenAmount, Token
-from web3mt.utils import my_logger, FileManager
+from web3mt.utils import logger, FileManager
 
 
 class BridgeInfo:
@@ -57,8 +56,8 @@ class Bridge(DEX, ABC):
 
     def validate_bridge_info(self, bridge_info: BridgeInfo) -> BridgeInfo | None:
         if bridge_info.bridge_fee.amount_in_usd > self.MAX_FEE_IN_USD:
-            my_logger.warning(
-                f'{self.client.log_info} | Can\'t bridge with {bridge_info.name}. '
+            logger.warning(
+                f'{self.evm_client.log_info} | Can\'t bridge with {bridge_info.name}. '
                 f'Bridge fee: {bridge_info.bridge_fee}'
             )
             return

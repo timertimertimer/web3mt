@@ -14,7 +14,7 @@ from web3mt.dex.models import DEX
 from web3mt.onchain.evm.client import *
 from web3mt.onchain.evm.models import *
 from web3mt.cex import OKX
-from web3mt.utils import my_logger, sleep, format_number, CustomAsyncSession
+from web3mt.utils import logger, sleep, format_number, curl_cffiAsyncSession
 from eth_utils import to_checksum_address
 
 
@@ -28,7 +28,7 @@ class Warmup(DEX):
         'Blur': '0x0000000000a39bb272e79075ade125fd351887ac'
     }
 
-    def __init__(self, session: CustomAsyncSession = None, client: ProfileClient = None, profile: Profile = None):
+    def __init__(self, session: curl_cffiAsyncSession = None, client: ProfileClient = None, profile: Profile = None):
         super().__init__(session=session, client=client, profile=profile)
         self.okx = OKX()
         self.total_fee = Decimal(0)
@@ -37,11 +37,11 @@ class Warmup(DEX):
         Ethereum.max_gwei = 3
 
     async def __aenter__(self):
-        my_logger.info(f'{self} | Started')
+        logger.info(f'{self} | Started')
         return self
 
     async def __aexit__(self, exc_type, exc_val, exc_tb):
-        my_logger.success(f'{self} | Warmed for {self.total_fee:.2f}$, GG')
+        logger.success(f'{self} | Warmed for {self.total_fee:.2f}$, GG')
 
     async def start_eth_warmup(self) -> Decimal | None:
         cheap_chains = [Base, Optimism]
@@ -105,24 +105,24 @@ class Warmup(DEX):
         }
         for i in range(5):
             path_log, funcs_and_params = random.choice(list(paths.items()))
-            my_logger.info(f'{self.client.account.address} | {path_log}')
+            logger.info(f'{self.evm_client.account.address} | {path_log}')
             for k, func_and_params in enumerate(funcs_and_params, start=1):
                 func = func_and_params[0]
                 params = func_and_params[1]
-                my_logger.info(f'{self.client.account.address} | {k}. {func.__name__}')
+                logger.info(f'{self.evm_client.account.address} | {k}. {func.__name__}')
                 fee = await func(*params)
                 if not fee:
                     break
                 self.total_fee += fee
             else:
                 self.total_fee += await self.deposit_to_okx()
-                my_logger.success(f'{self.client.account.address} | Warmed for {self.total_fee:.2f}$, GG')
+                logger.success(f'{self.evm_client.account.address} | Warmed for {self.total_fee:.2f}$, GG')
                 return self.total_fee
-        my_logger.warning(f'Tried 5 times. Sorry, unluck :(')
+        logger.warning(f'Tried 5 times. Sorry, unluck :(')
 
     async def deposit_to_okx(self):
-        return await self.client.tx(
-            self.client.profile.okx_evm_address, f'Deposit to OKX', use_full_balance=True,
+        return await self.evm_client.tx(
+            self.evm_client.profile.okx_evm_address, f'Deposit to OKX', use_full_balance=True,
             return_fee_in_usd=True
         )
 
@@ -138,13 +138,13 @@ class Warmup(DEX):
             if okx_balance > token_amount:
                 await self.okx.collect_on_funding_master()
                 break
-            my_logger.warning(
+            logger.warning(
                 f'Not enough balance on OKX. Balance - {okx_balance}, withdraw amount - {token_amount}. Waiting...'
             )
             await sleep(5, 10, log_info=str(self))
-        self.client.chain = token_amount.token.chain
-        evm_balance = await self.client.balance_of(token=token_amount.token)
-        fee_in_usd = await self.okx.withdraw(self.client.account.address, token_amount, max_fee_in_usd)
+        self.evm_client.chain = token_amount.token.chain
+        evm_balance = await self.evm_client.balance_of(token=token_amount.token)
+        fee_in_usd = await self.okx.withdraw(self.evm_client.account.address, token_amount, max_fee_in_usd)
         if not fee_in_usd:
             return
         await self.wait_for_chain_arrival(evm_balance, token_amount)
@@ -156,9 +156,9 @@ class Warmup(DEX):
             token_out: Token,
             wait_for_arrival: bool = False
     ) -> Decimal | None:
-        self.client.chain = token_out.chain
-        destination_token_balance_before_bridge = await self.client.balance_of(token=token_out)
-        self.client.chain = token_amount_in.token.chain
+        self.evm_client.chain = token_out.chain
+        destination_token_balance_before_bridge = await self.evm_client.balance_of(token=token_out)
+        self.evm_client.chain = token_amount_in.token.chain
         bridge_info = await self.execute_bridge(token_amount_in, token_out)
         if not bridge_info:
             return
@@ -166,19 +166,19 @@ class Warmup(DEX):
             await self.wait_for_chain_arrival(
                 destination_token_balance_before_bridge, bridge_info.token_amount_out - bridge_info.bridge_fee
             )
-        self.client.chain = token_out.chain
+        self.evm_client.chain = token_out.chain
         return bridge_info.bridge_fee.amount_in_usd
 
     async def wait_for_chain_arrival(
             self, before_balance_amount: TokenAmount, destination_token_amount: TokenAmount
     ) -> bool:
-        self.client.chain = before_balance_amount.token.chain
-        my_logger.info(f'{self.client} | Waiting for +{destination_token_amount}')
+        self.evm_client.chain = before_balance_amount.token.chain
+        logger.info(f'{self.evm_client} | Waiting for +{destination_token_amount}')
         while True:
-            after_balance_amount = await self.client.balance_of(token=before_balance_amount.token)
+            after_balance_amount = await self.evm_client.balance_of(token=before_balance_amount.token)
             if after_balance_amount * 1.01 > before_balance_amount + destination_token_amount:
-                my_logger.debug(
-                    f'{self.client} | +{destination_token_amount}. Current balance - {after_balance_amount}'
+                logger.debug(
+                    f'{self.evm_client} | +{destination_token_amount}. Current balance - {after_balance_amount}'
                 )
                 return True
             await sleep(5, 10, log_info=str(self))
@@ -189,27 +189,27 @@ class Warmup(DEX):
             await token_amount_in.token.update_price()
         if not token_out.price:
             await token_out.update_price()
-        self.client.chain = token_amount_in.token.chain
-        balance: TokenAmount = await self.client.balance_of(token=token_amount_in.token)
-        my_logger.info(f'{self.client} | Balance: {balance}')
-        user = recipient = self.client.account.address
+        self.evm_client.chain = token_amount_in.token.chain
+        balance: TokenAmount = await self.evm_client.balance_of(token=token_amount_in.token)
+        logger.info(f'{self.evm_client} | Balance: {balance}')
+        user = recipient = self.evm_client.account.address
         if balance < token_amount_in:
-            my_logger.warning(
-                f'{self.client} | Not enough balance to bridge {token_amount_in}. Balance - {balance}'
+            logger.warning(
+                f'{self.evm_client} | Not enough balance to bridge {token_amount_in}. Balance - {balance}'
             )
             return None
-        my_logger.info(
-            f'{self.client} | Trying to bridge {token_amount_in} '
+        logger.info(
+            f'{self.evm_client} | Trying to bridge {token_amount_in} '
             f'from {token_amount_in.token.chain} to {token_out.chain}...'
         )
         bridges = {
-            'Relay bridge': Relay(client=self.client).bridge,
-            'Router bridge': RouterNitro(client=self.client).bridge,
-            'Bungee refuel': Bungee(client=self.client).refuel
+            'Relay bridge': Relay(client=self.evm_client).bridge,
+            'Router bridge': RouterNitro(client=self.evm_client).bridge,
+            'Bungee refuel': Bungee(client=self.evm_client).refuel
         }
         bridges_info = await asyncio.gather(*[
             func(BridgeInfo(
-                name=name, user=user, recipient=recipient, log_info=self.client.log_info,
+                name=name, user=user, recipient=recipient, log_info=self.evm_client.log_info,
                 token_amount_in=token_amount_in, token_out=token_out,
             ))
             for name, func in bridges.items()
@@ -219,43 +219,43 @@ class Warmup(DEX):
             return
 
         cheapest_bridge: BridgeInfo = min(bridges_info, key=lambda x: x.bridge_fee)
-        my_logger.info(f'Cheapest bridge - {cheapest_bridge.name}')
-        my_logger.info(cheapest_bridge)
+        logger.info(f'Cheapest bridge - {cheapest_bridge.name}')
+        logger.info(cheapest_bridge)
         if cheapest_bridge:
-            await self.client.tx_with_params(
+            await self.evm_client.tx_with_params(
                 name=f'Bridge from {token_amount_in.token.chain} to {token_out.chain} with {cheapest_bridge.name}',
                 tx_params=cheapest_bridge.tx_params
             )
         return cheapest_bridge
 
     async def blur_deposit(self, token_amount_in: TokenAmount):
-        self.client.chain = Ethereum
-        balance = await self.client.balance_of()
+        self.evm_client.chain = Ethereum
+        balance = await self.evm_client.balance_of()
         if balance < token_amount_in:
-            my_logger.warning(
-                f'{self.client} | Not enough balance to deposit {token_amount_in} to Blur. Balance - {balance}'
+            logger.warning(
+                f'{self.evm_client} | Not enough balance to deposit {token_amount_in} to Blur. Balance - {balance}'
             )
             return None
-        contract = self.client.w3.eth.contract(
+        contract = self.evm_client.w3.eth.contract(
             to_checksum_address(self.CONTRACTS['Blur']), abi=DefaultABIs.WETH
         )
-        return await self.client.tx(
+        return await self.evm_client.tx(
             contract.address, 'Blur deposit', contract.encodeABI('deposit'),
             value=token_amount_in
         )
 
     async def blur_withdraw(self, token_amount_out: TokenAmount):
-        self.client.chain = Ethereum
-        balance = await self.client.balance_of(token=Token(chain=Ethereum, address=self.CONTRACTS['Blur']))
+        self.evm_client.chain = Ethereum
+        balance = await self.evm_client.balance_of(token=Token(chain=Ethereum, address=self.CONTRACTS['Blur']))
         if balance < token_amount_out:
-            my_logger.warning(
-                f'{self.client} | Not enough balance to withdraw {token_amount_out} from Blur. Balance - {balance}'
+            logger.warning(
+                f'{self.evm_client} | Not enough balance to withdraw {token_amount_out} from Blur. Balance - {balance}'
             )
             return None
-        contract = self.client.w3.eth.contract(
+        contract = self.evm_client.w3.eth.contract(
             to_checksum_address(self.CONTRACTS['Blur']), abi=DefaultABIs.WETH
         )
-        return await self.client.tx(
+        return await self.evm_client.tx(
             contract.address, 'Blur withdraw', contract.encodeABI('withdraw', args=[token_amount_out.wei]),
         )
 
@@ -296,7 +296,7 @@ async def main():
     db = DBHelper(env.LOCAL_CONNECTION_STRING)
     profiles: list[Profile] = await db.get_rows_by_id([108], Profile)
     fees = await asyncio.gather(*[asyncio.create_task(bridge(profile)) for profile in profiles])
-    my_logger.success(f'Total fee - {format_number(sum([fee or 0 for fee in fees]))}$')
+    logger.success(f'Total fee - {format_number(sum([fee or 0 for fee in fees]))}$')
 
 
 if __name__ == '__main__':

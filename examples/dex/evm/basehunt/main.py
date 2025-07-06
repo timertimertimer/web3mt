@@ -14,8 +14,8 @@ from web3mt.config import env
 from web3mt.dex.models import DEX
 from web3mt.onchain.evm.client import ProfileClient
 from web3mt.onchain.evm.models import TokenAmount, Base, Arbitrum, Optimism, Token, Linea, Zora, zkSync
-from web3mt.utils import FileManager, sleep, my_logger
-from web3mt.utils.custom_sessions import SessionConfig, RETRY_COUNT, CustomAsyncSession
+from web3mt.utils import FileManager, sleep, logger
+from web3mt.utils.http_sessions import SessionConfig, RETRY_COUNT, curl_cffiAsyncSession
 from web3mt.utils.db import update_shared_proxies
 
 nfts = {
@@ -35,11 +35,11 @@ class Basehunt(DEX):
     NAME = 'Basehunt'
     API = 'https://basehunt.xyz/api'
 
-    def __init__(self, session: CustomAsyncSession = None, client: ProfileClient = None, profile: Profile = None):
+    def __init__(self, session: curl_cffiAsyncSession = None, client: ProfileClient = None, profile: Profile = None):
         super().__init__(session=session, client=client, profile=profile)
-        self.session.config.sleep_after_request = True
-        self.session.config.sleep_range = (5, 10)
-        self.client.chain = Base
+        self.http_session.config.sleep_after_request = True
+        self.http_session.config.sleep_range = (5, 10)
+        self.evm_client.chain = Base
 
     async def start(self) -> tuple | None:
         try:
@@ -53,25 +53,25 @@ class Basehunt(DEX):
             address, challenge_id = random.choice(list(nfts.items()))
             res, _ = await self.paid_mint(address)
             if not res:
-                my_logger.error(f'{self.client.log_info} | Couldn\'t mint')
+                logger.error(f'{self.evm_client.log_info} | Couldn\'t mint')
                 return
             for _ in range(5):
                 if await self.complete(challenge_id):
                     break
         spin_data = await self.spin_data()
         if not spin_data['spinData']['hasAvailableSpin']:
-            my_logger.info(f'{self.client.log_info} | No spin available')
+            logger.info(f'{self.evm_client.log_info} | No spin available')
         else:
             await self.spin()
         await self.claim_ens()
         points_data = await self.state()
-        state = [state for state in states if state.id == self.client.profile.id]
+        state = [state for state in states if state.id == self.evm_client.profile.id]
         if state:
             state[0].sp = points_data['scoreData']['currentScore']
         await state_db.add_record(
             state[0] if state else BasehuntState(
-                id=self.client.profile.id,
-                address=self.client.account.address,
+                id=self.evm_client.profile.id,
+                address=self.evm_client.account.address,
                 points=points_data['scoreData']['currentScore'],
                 referral_code=points_data['referralData']['referralCode']
             )
@@ -79,33 +79,33 @@ class Basehunt(DEX):
 
     async def spin(self):
         try:
-            _, data = await self.session.post(
+            _, data = await self.http_session.post(
                 f'{self.API}/spin-the-wheel/execute',
-                json={'gameId': 2, 'userAddress': str(self.client.account.address)}
+                json={'gameId': 2, 'userAddress': str(self.evm_client.account.address)}
             )
         except RequestsError as e:
             if e.args[0] == 'HTTP Error 500: ':
-                my_logger.info(f'{self.client.log_info} | Already spun')
+                logger.info(f'{self.evm_client.log_info} | Already spun')
                 return
         spin_result = data['spinData']['lastSpinResult']
-        my_logger.debug(f'{self.client.log_info} | Got {spin_result["points"]} {spin_result["type"]}')
+        logger.debug(f'{self.evm_client.log_info} | Got {spin_result["points"]} {spin_result["type"]}')
 
     async def spin_data(self):
-        _, data = await self.session.get(
+        _, data = await self.http_session.get(
             f'{self.API}/spin-the-wheel',
-            params={'gameId': 2, 'userAddress': str(self.client.account.address)}
+            params={'gameId': 2, 'userAddress': str(self.evm_client.account.address)}
         )
         return data
 
     async def paid_mint(self, address: str) -> tuple[bool, Exception | HexBytes | str]:
-        contract = self.client.w3.eth.contract(to_checksum_address(address), abi=ABI['base_nft'])
-        mints = await contract.functions.balanceOf(self.client.account.address).call()
+        contract = self.evm_client.w3.eth.contract(to_checksum_address(address), abi=ABI['base_nft'])
+        mints = await contract.functions.balanceOf(self.evm_client.account.address).call()
         if mints > 0:
             return True, 'Already minted'
-        data = await self.client.tx(
+        data = await self.evm_client.tx(
             contract.address, 'Mint NFT',
-            contract.encode_abi('mintWithComment', args=[str(self.client.account.address), 1, '']),
-            TokenAmount(0.0001, token=self.client.chain.native_token)
+            contract.encode_abi('mintWithComment', args=[str(self.evm_client.account.address), 1, '']),
+            TokenAmount(0.0001, token=self.evm_client.chain.native_token)
         )
         if isinstance(data[1], ValueError) and 'insufficient funds for gas' in data[1].args[0]['message']:
             await self.fund()
@@ -114,16 +114,16 @@ class Basehunt(DEX):
         return data
 
     async def free_mint(self):
-        contract = self.client.w3.eth.contract(
+        contract = self.evm_client.w3.eth.contract(
             to_checksum_address('0x0821D16eCb68FA7C623f0cD7c83C8D5Bd80bd822'), abi=ABI['forbes']
         )
-        mints = await contract.functions.balanceOf(self.client.account.address).call()
+        mints = await contract.functions.balanceOf(self.evm_client.account.address).call()
         if mints > 0:
             return True, 'Already minted'
-        data = await self.client.tx(
+        data = await self.evm_client.tx(
             contract.address, 'Mint NFT',
             contract.encode_abi('claim', args=[
-                str(self.client.account.address), 1, '0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE', 0, (
+                str(self.evm_client.account.address), 1, '0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE', 0, (
                     ['0x0000000000000000000000000000000000000000000000000000000000000000'],
                     115792089237316195423570985008687907853269984665640564039457584007913129639935,
                     0, '0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE'
@@ -139,64 +139,64 @@ class Basehunt(DEX):
     async def fund(self):
         routes = []
         for chain in [Arbitrum, Optimism, Zora, Linea, zkSync]:
-            self.client.chain = chain
-            balance = await self.client.balance_of()
-            if balance > TokenAmount(0.00012, token=self.client.chain.native_token):
+            self.evm_client.chain = chain
+            balance = await self.evm_client.balance_of()
+            if balance > TokenAmount(0.00012, token=self.evm_client.chain.native_token):
                 routes.append(chain)
-        self.client.chain = Base
-        before_bridge = await self.client.balance_of()
+        self.evm_client.chain = Base
+        before_bridge = await self.evm_client.balance_of()
         if routes:
-            await Warmup(client=self.client).execute_bridge(
+            await Warmup(client=self.evm_client).execute_bridge(
                 TokenAmount(
                     random.randint(to_wei(0.00011, 'ether'), to_wei(0.00012, 'ether')),
                     is_wei=True, token=Token(random.choice(routes))
-                ), self.client.chain.native_token
+                ), self.evm_client.chain.native_token
             )
         else:
             token_amount_out = TokenAmount(
                 random.randint(to_wei(0.00015, 'ether'), to_wei(0.0002, 'ether')), is_wei=True,
                 token=random.choice([Optimism, zkSync]).native_token
             )
-            self.client.chain = token_amount_out.token.chain
-            before_withdraw = await self.client.balance_of()
+            self.evm_client.chain = token_amount_out.token.chain
+            before_withdraw = await self.evm_client.balance_of()
             while True:
                 if await OKX(
-                        profile=self.client.profile,
+                        profile=self.evm_client.profile,
                         config=SessionConfig(sleep_after_request=True)
-                ).withdraw(str(self.client.account.address), token_amount_out):
+                ).withdraw(str(self.evm_client.account.address), token_amount_out):
                     break
                 await sleep(5, 10, log_info=str(self))
             while True:
-                after_withdraw = await self.client.balance_of()
+                after_withdraw = await self.evm_client.balance_of()
                 if after_withdraw > before_withdraw:
                     break
                 await sleep(5, 10, log_info=str(self))
-            await Warmup(client=self.client).execute_bridge(
+            await Warmup(client=self.evm_client).execute_bridge(
                 TokenAmount(
                     random.randint(to_wei(0.00011, 'ether'), to_wei(0.00012, 'ether')),
                     is_wei=True, token=token_amount_out.token
                 ), Base.native_token
             )
-        self.client.chain = Base
+        self.evm_client.chain = Base
         while True:
-            after_bridge = await self.client.balance_of()
+            after_bridge = await self.evm_client.balance_of()
             if after_bridge > before_bridge:
                 break
             await sleep(5, 10, log_info=str(self))
 
     async def complete(self, challenge_id: str) -> bool:
-        _, data = await self.session.post(
+        _, data = await self.http_session.post(
             f'{self.API}/challenges/complete',
-            json={'gameId': 2, 'userAddress': str(self.client.account.address), 'challengeId': challenge_id}
+            json={'gameId': 2, 'userAddress': str(self.evm_client.account.address), 'challengeId': challenge_id}
         )
         return data['success']
 
     async def state(self):
         for _ in range(RETRY_COUNT):
             try:
-                _, data = await self.session.get(
+                _, data = await self.http_session.get(
                     f'{self.API}/profile/state',
-                    params={'gameId': 2, 'userAddress': str(self.client.account.address)}
+                    params={'gameId': 2, 'userAddress': str(self.evm_client.account.address)}
                 )
                 break
             except RequestsError as e:
@@ -207,26 +207,26 @@ class Basehunt(DEX):
 
     async def opt_in(self, referer: BasehuntState) -> bool:
         referral_code = referer.referral_code
-        _, data = await self.session.post(
+        _, data = await self.http_session.post(
             f'{self.API}/profile/opt-in',
             json={
-                'gameId': 2, 'userAddress': str(self.client.account.address),
+                'gameId': 2, 'userAddress': str(self.evm_client.account.address),
                 'referralId': random.choice([referral_code] * 4 + [None] * 4 + [main_referral_code] * 2)
             }
         )
         if data['success']:
-            my_logger.info(f'{self.client.log_info} | Opted in. Reffered by {referer.id} profile')
+            logger.info(f'{self.evm_client.log_info} | Opted in. Reffered by {referer.id} profile')
         return data['success']
 
     async def claim_badges(self):
         async def stand_with_crypto():
-            _, data = await self.session.post(
+            _, data = await self.http_session.post(
                 'https://www.standwithcrypto.org/action/sign-up',
                 headers={
                     'Content-Type': 'application/json',
                     'Next-Action': 'd24546603da39fe456a13cb7ea842d234f2902e0'
                 },
-                data=json.dumps([self.client.account.address])
+                data=json.dumps([self.evm_client.account.address])
             )
             data = json.loads(data.removeprefix('0:["$@1",["--ksRhIIvFq6qzpETPlTx",null]]\n1:'))
             domain = data['domain']
@@ -238,7 +238,7 @@ class Basehunt(DEX):
             issued_at = data['issued_at']
             expiration_time = data['expiration_time']
             invalid_before = data['invalid_before']
-            signature = self.client.sign(
+            signature = self.evm_client.sign(
                 f'''{domain} wants you to sign in with your Ethereum account:
 {address}
 
@@ -255,7 +255,7 @@ Not Before: {invalid_before}'''
             data.pop('uri')
             for i in range(RETRY_COUNT):
                 try:
-                    _, data = await self.session.post(
+                    _, data = await self.http_session.post(
                         'https://www.standwithcrypto.org/action/sign-up',
                         headers={
                             'Content-Type': 'application/json',
@@ -264,7 +264,7 @@ Not Before: {invalid_before}'''
                         data=json.dumps([{'signature': '0x' + signature, 'payload': data}])
                     )
                 except RequestsError as e:
-                    my_logger.info(f'{self.client.log_info} | Failed to claim Stand With Crypto badge ({i}): {e}')
+                    logger.info(f'{self.evm_client.log_info} | Failed to claim Stand With Crypto badge ({i}): {e}')
 
         badges = {
             'Stand With Crypto': (stand_with_crypto, 1),
@@ -283,26 +283,26 @@ Not Before: {invalid_before}'''
                 func, id_ = None, func_and_id
             while True:
                 try:
-                    _, data = await self.session.post(
+                    _, data = await self.http_session.post(
                         f'{self.API}/badges/claim',
-                        json={'gameId': 2, 'userAddress': str(self.client.account.address), 'badgeId': str(id_)}
+                        json={'gameId': 2, 'userAddress': str(self.evm_client.account.address), 'badgeId': str(id_)}
                     )
                     if data['success']:
-                        my_logger.debug(f'{self.client.log_info} | Claimed {badge} badge')
+                        logger.debug(f'{self.evm_client.log_info} | Claimed {badge} badge')
                     break
                 except RequestsError as e:
-                    await sleep(5, 10, log_info=self.client.log_info)
+                    await sleep(5, 10, log_info=self.evm_client.log_info)
                     if func:
                         await func()
                     else:
-                        my_logger.info(f'{self.client.log_info} | Not eligible to claim "{badge}" badge. {e}')
+                        logger.info(f'{self.evm_client.log_info} | Not eligible to claim "{badge}" badge. {e}')
                         break
 
     async def claim_ens(self):
-        contract = self.client.w3.eth.contract(
+        contract = self.evm_client.w3.eth.contract(
             to_checksum_address('0x4cCb0BB02FCABA27e82a56646E81d8c5bC4119a5'), abi=ABI['ens']
         )
-        registered = await contract.functions.discountedRegistrants(self.client.account.address).call()
+        registered = await contract.functions.discountedRegistrants(self.evm_client.account.address).call()
         if registered:
             await self.complete('2XaiAPDQ8WwG5CUWfMMYaU')
             return
@@ -310,21 +310,21 @@ Not Before: {invalid_before}'''
         points = points_data['scoreData']['currentScore']
         if points < 5000:
             return
-        name = self.client.profile.email.login.split('@')[0].translate(str.maketrans('', '', punctuation + whitespace))
+        name = self.evm_client.profile.email.login.split('@')[0].translate(str.maketrans('', '', punctuation + whitespace))
         if not await contract.functions.available(name).call():
             name += str(random.randrange(10))
         name_with_domain = name + ".base.eth"
         name_hash = namehash(name_with_domain)
-        await self.client.tx(
+        await self.evm_client.tx(
             contract.address,
             f'Mint ENS - {name}',
             contract.encode_abi('discountedRegister', args=[
                 (
-                    name, self.client.account.address, 315576000,
+                    name, self.evm_client.account.address, 315576000,
                     to_checksum_address('0xC6d566A56A1aFf6508b41f6c90ff131615583BCD'),
                     [
                         to_bytes(
-                            hexstr=f'0xd5fa2b00{to_hex(name_hash)[2:]}000000000000000000000000{self.client.account.address[2:]}'),
+                            hexstr=f'0xd5fa2b00{to_hex(name_hash)[2:]}000000000000000000000000{self.evm_client.account.address[2:]}'),
                         to_bytes(
                             hexstr=f'0x77372213{to_hex(encode(["bytes32", "string"], [name_hash, name_with_domain]))[2:]}')
                     ],
@@ -334,7 +334,7 @@ Not Before: {invalid_before}'''
                 to_bytes(hexstr='0x00')
             ])
         )
-        await sleep(5, 10, str(self.client))
+        await sleep(5, 10, str(self.evm_client))
         await self.complete('2XaiAPDQ8WwG5CUWfMMYaU')
 
 

@@ -4,13 +4,13 @@ import asyncio
 from web3db import DBHelper
 from web3db.models import Profile
 
-from web3mt.utils import ProfileSession, logger
+from web3mt.utils import Profilecurl_cffiAsyncSession, logger
 
 
 async def join_waitlist(profile: Profile):
-    async with ProfileSession(profile) as session:
+    async with Profilecurl_cffiAsyncSession(profile) as session:
         url = 'https://www.fuel.domains/api/domain'
-        response, data = await session.request(method='POST', url=url, json={'email': profile.email.login})
+        response, data = await session.make_request(method='POST', url=url, json={'email': profile.email.login})
         logger.success(f'{profile.id} | {profile.email.login} | {data}')
 
 

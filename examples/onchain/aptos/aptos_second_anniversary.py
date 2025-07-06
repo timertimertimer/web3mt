@@ -5,7 +5,7 @@ from aptos_sdk.transactions import EntryFunction, TransactionArgument
 from web3db import Profile, DBHelper
 from web3mt.onchain.aptos import Client
 from web3mt.onchain.aptos.models import TokenAmount
-from web3mt.utils import my_logger
+from web3mt.utils import logger
 
 ZERO_BALANCE = TokenAmount(0)
 
@@ -24,7 +24,7 @@ async def mint(profile: Profile):
     amount = 1
     balance = await client.balance()
     if await is_minted(client):
-        my_logger.debug(f'{client} | Already minted')
+        logger.debug(f'{client} | Already minted')
         return
     if balance > ZERO_BALANCE:
         payload = EntryFunction.natural(
@@ -41,9 +41,9 @@ async def mint(profile: Profile):
         )
         tx_hash = await client.send_transaction(payload, 2000)
         if tx_hash:
-            my_logger.success(f'{client} | Minted {amount} NFTs')
+            logger.success(f'{client} | Minted {amount} NFTs')
         else:
-            my_logger.error(f'{client} | Failed {tx_hash}')
+            logger.error(f'{client} | Failed {tx_hash}')
 
 
 async def main():

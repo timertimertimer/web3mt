@@ -15,7 +15,7 @@ from dateutil.parser import parse
 from examples.dex.evm.cysic.db import CysicAccount, CONNECTION_STRING
 from web3mt.dex.models import DEX
 from web3mt.utils.db import create_db_instance
-from web3mt.utils import my_logger as logger, sleep
+from web3mt.utils import logger, sleep
 from examples.utils.other import photos_path, parse_date
 
 fake = Faker()
@@ -35,13 +35,13 @@ class Cysic(DEX):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.session.headers.update({
-            'x-cysic-address': self.client.account.address, 'x-cysic-sign': self.client.sign('Welcome to Cysic！')
+        self.http_session.headers.update({
+            'x-cysic-address': self.evm_client.account.address, 'x-cysic-sign': self.evm_client.sign('Welcome to Cysic！')
         })
         self.db_helper = create_db_instance(CONNECTION_STRING)
 
     async def profile(self):
-        _, data = await self.session.get(f'{self.API_URL}/myPage/{self.client.account.address}/profile')
+        _, data = await self.http_session.get(f'{self.API_URL}/myPage/{self.evm_client.account.address}/profile')
         if data['msg'] == 'success':
             data = data["data"]
             logger.info(
@@ -55,12 +55,12 @@ class Cysic(DEX):
             pass
 
     async def check_code(self, code: str) -> bool:
-        _, data = await self.session.get(f'{self.API_URL}/referral/check/{code}')
+        _, data = await self.http_session.get(f'{self.API_URL}/referral/check/{code}')
         return data['data']['exist']
 
     async def bind(self, code: str):
         if await self.check_code(code):
-            _, data = await self.session.put(f'{self.API_URL}/referral/bind/{code}/{self.client.account.address}')
+            _, data = await self.http_session.put(f'{self.API_URL}/referral/bind/{code}/{self.evm_client.account.address}')
             if data['msg'] == f'Invite Code Success: {code}':
                 logger.success(f'{self} | {data["msg"]}')
                 return True
@@ -75,7 +75,7 @@ class Cysic(DEX):
         file_data, name = await get_random_photo()
         mp = CurlMime()
         mp.addpart('file', content_type='multipart/form-data', filename=name, data=file_data)
-        _, data = await self.session.post(f'{self.API_URL}/upload', multipart=mp)
+        _, data = await self.http_session.post(f'{self.API_URL}/upload', multipart=mp)
         if data['msg'] == 'success':
             logger.success(f'{self} | Uploaded "{name}"')
             return data['data']
@@ -98,20 +98,20 @@ class Cysic(DEX):
             timestamp = int(datetime.now().timestamp())
             headers = {
                 'x-cysis-chain-id': str(chain_id),
-                'x-cysis-signature': '0x' + self.client.sign(
+                'x-cysis-signature': '0x' + self.evm_client.sign(
                     json.dumps({'name': username, 'logo': logo}) + str(chain_id) + str(timestamp)
                 ),
                 'x-cysic-timestamp': str(timestamp),
-                'x-cysic-wallet': self.client.account.address
+                'x-cysic-wallet': self.evm_client.account.address
             }
-            data = {'claim_reward_address': self.client.account.address, 'logo': logo, 'name': username}
-            _, data = await self.session.post(f'{self.API_URL}/register', json=data, headers=headers)
+            data = {'claim_reward_address': self.evm_client.account.address, 'logo': logo, 'name': username}
+            _, data = await self.http_session.post(f'{self.API_URL}/register', json=data, headers=headers)
             if data['msg'] == 'success':
                 logger.success(f'{self} | Registered')
                 creation_date = (await self.profile())["searchResult"]["WhitelistInfo"]["CreatedAt"]
                 new_account = CysicAccount(
-                    profile_id=self.client.profile.id if getattr(self.client, 'profile') else None,
-                    address=self.client.account.address,
+                    profile_id=self.evm_client.profile.id if getattr(self.evm_client, 'profile') else None,
+                    address=self.evm_client.account.address,
                     name=username,
                     created_at=parse(creation_date)
                 )
@@ -125,7 +125,7 @@ class Cysic(DEX):
         return data
 
     async def _latest_claim_record(self, address: str):
-        _, data = await self.session.get(f'{self.API_URL}/myPage/faucet/{address}/latestRecord')
+        _, data = await self.http_session.get(f'{self.API_URL}/myPage/faucet/{address}/latestRecord')
         if data['msg'] == 'success':
             return data['data']
         else:
@@ -144,7 +144,7 @@ class Cysic(DEX):
             time_to_wait = timedelta(minutes=5)
         logger.info(f'{self} | Waiting next claim time: {next_claim_datetime_with_tz.isoformat()}')
         await sleep(time_to_wait.total_seconds(), log_info=f'{self}', echo=True)
-        _, data = await self.session.get(f'{self.API_URL}/myPage/faucet/{cosmos_address}')
+        _, data = await self.http_session.get(f'{self.API_URL}/myPage/faucet/{cosmos_address}')
         if data['msg'] == 'success':
             logger.success(f'{self} | Claimed {latest_claim_record_data["nextTimeSendAmount"]} $CYS')
         else:

@@ -2,7 +2,7 @@ from curl_cffi.requests import RequestsError
 
 from web3mt.dex.bridges.base import Bridge, BridgeInfo
 from web3mt.onchain.evm.models import Token, TokenAmount
-from web3mt.utils import my_logger
+from web3mt.utils import logger
 
 
 class Relay(Bridge):
@@ -32,10 +32,10 @@ class Relay(Bridge):
             tradeType='EXACT_OUTPUT' if bridge_info.exact_output else 'EXACT_INPUT'
         )
         try:
-            response, data = await self.session.post(self.API_URL + 'execute/swap', json=payload)
+            response, data = await self.http_session.post(self.API_URL + 'execute/swap', json=payload)
         except RequestsError:
-            my_logger.warning(f'{self.client.log_info} | Skipping Relay bridge')
-            return
+            logger.warning(f'{self.evm_client.log_info} | Skipping Relay bridge')
+            return None
         fees = data['fees']['relayer']
         bridge_info.bridge_fee = TokenAmount(
             amount=fees['amount'], is_wei=True, token=Token(chain=fees["currency"]["chainId"], **fees["currency"])
@@ -48,7 +48,7 @@ class Relay(Bridge):
             )
         )
         tx_data = data['steps'][0]['items'][0]['data']
-        bridge_info.tx_params = await self.client.create_tx_params(
+        bridge_info.tx_params = await self.evm_client.create_tx_params(
             to=tx_data['to'], value=bridge_info.token_amount_in,
             data=tx_data['data'], use_full_balance=use_full_balance
         )

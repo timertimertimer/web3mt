@@ -3,7 +3,7 @@ import asyncio
 from web3db.core import create_db_instance, DBHelper
 
 from web3mt.offchain.webshare import Webshare
-from web3mt.utils import my_logger
+from web3mt.utils import logger
 
 
 async def update_shared_proxies(db_helper: DBHelper):
@@ -14,7 +14,7 @@ async def update_shared_proxies(db_helper: DBHelper):
     for profile in profiles:
         if profile.proxy.proxy_string not in ws_proxies:
             new_proxy = new_proxies.pop()
-            my_logger.info(f'{profile.id} | Changing proxy {profile.proxy.proxy_string} to {new_proxy}')
+            logger.info(f'{profile.id} | Changing proxy {profile.proxy.proxy_string} to {new_proxy}')
             profile.proxy.proxy_string = new_proxy
     await db_helper.add_record(profiles)
 

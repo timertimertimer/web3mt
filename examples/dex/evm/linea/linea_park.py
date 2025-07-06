@@ -16,7 +16,7 @@ from web3db import DBHelper, Profile
 
 from web3mt.onchain.evm.client import ProfileClient
 from web3mt.onchain.evm.models import Linea, TokenAmount, Token
-from web3mt.utils import my_logger, ProfileSession, sleep
+from web3mt.utils import logger, Profilecurl_cffiAsyncSession, sleep
 from db import task_done, get_task_status, select_profile, insert_record
 
 load_dotenv()
@@ -72,7 +72,7 @@ class LineaPark(ProfileClient):
 
     async def arena_games(self):
         headers = {'Origin': 'https://linea.arenavs.com', 'Referer': 'https://linea.arenavs.com/'}
-        async with ProfileSession(self.profile, headers=headers) as session:
+        async with Profilecurl_cffiAsyncSession(self.profile, headers=headers) as session:
             password = self.profile.email.password
             try:
                 response, data = await session.post(
@@ -135,7 +135,7 @@ class LineaPark(ProfileClient):
                 '0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000'
                 '0000000000000000000000000000000000000000000'
             )
-        my_logger.success(f'{self.profile.id} | {self.account.address} | {name} already minted')
+        logger.success(f'{self.profile.id} | {self.account.address} | {name} already minted')
         return True
 
     async def acg_worlds(self):
@@ -251,7 +251,7 @@ class LineaPark(ProfileClient):
                 ]), value=value, check_existing=False
             )
         else:
-            my_logger.success(f'{self.profile.id} | {self.account.address} | {name} (Identity Pass) already minted')
+            logger.success(f'{self.profile.id} | {self.account.address} | {name} (Identity Pass) already minted')
 
         contract = self.w3.eth.contract(
             self.w3.to_checksum_address('0x184E5677890c5aDd563dE785fF371f6c188d3dB6'),
@@ -266,7 +266,7 @@ class LineaPark(ProfileClient):
                 ]), check_existing=False
             )
         else:
-            my_logger.success(f'{self.profile.id} | {self.account.address} | {name} (Warrior) already minted')
+            logger.success(f'{self.profile.id} | {self.account.address} | {name} (Warrior) already minted')
             return True
 
     async def alienswap(self):
@@ -315,7 +315,7 @@ class LineaPark(ProfileClient):
     async def zace(self):
         name = 'zAce'
         if (await self.balance_of(token_address='0x4446090D91CB7893E51C0B6d48829CdaBB84a980')).Ether > 0:
-            my_logger.success(f'{self.profile.id} | {self.account.address} | {name} already minted')
+            logger.success(f'{self.profile.id} | {self.account.address} | {name} already minted')
             return True
         return await self.tx(
             '0x971a871fd8811abbb1f5e3fb1d84a873d381cee4', name, '0xbaeb0718', value=TokenAmount(0.0001),
@@ -432,7 +432,7 @@ class LineaPark(ProfileClient):
             abi=abi
         )
         if await contract.functions.balanceOf(self.account.address, 0).call() > 0:
-            my_logger.success(f'{self.profile.id} | {self.account.address} | {name} already minted')
+            logger.success(f'{self.profile.id} | {self.account.address} | {name} already minted')
             return True
         return await self.tx(
             to=contract.address,
@@ -458,7 +458,7 @@ class LineaPark(ProfileClient):
                 'Origin': 'https://park.theunfettered.io',
                 'Referer': 'https://park.theunfettered.io/'
             }
-            async with ProfileSession(self.profile, headers=headers) as session:
+            async with Profilecurl_cffiAsyncSession(self.profile, headers=headers) as session:
                 response, data = await session.post(
                     url='https://park.theunfettered.io/api/login/metamask/temp-token',
                     json={'address': self.account.address.lower()}
@@ -512,7 +512,7 @@ class LineaPark(ProfileClient):
     async def lucky_cat(self):
         name = 'Lucky Cat'
         if (await self.balance_of(token_address='0x3BBee2922f47D276a70FBE2D38DcC2A920Ed1d05')).Ether > 0:
-            my_logger.success(f'{self.profile.id} | {self.account.address} | {name} already minted')
+            logger.success(f'{self.profile.id} | {self.account.address} | {name} already minted')
             return True
         return await self.tx(
             to='0xc577018b3518cd7763d143d7699b280d6e50fdb6',
@@ -524,7 +524,7 @@ class LineaPark(ProfileClient):
     async def ulti_pilot(self):
         name = 'UltiPilot'
         if (await self.balance_of(token_address='0xE3b5500039F401e48627e8025b37d4871cF34f36')).Ether > 0:
-            my_logger.success(f'{self.profile.id} | {self.account.address} | {name} already minted')
+            logger.success(f'{self.profile.id} | {self.account.address} | {name} already minted')
             return True
         abi = [
             {
@@ -556,7 +556,7 @@ class LineaPark(ProfileClient):
             'Referer': 'https://pilot-linea.ultiverse.io/',
             'Ul-Auth-Api-Key': 'YWktYWdlbnRAZFd4MGFYWmxjbk5s'
         }
-        async with ProfileSession(self.profile, headers=headers) as session:
+        async with Profilecurl_cffiAsyncSession(self.profile, headers=headers) as session:
             response, data = await session.post(
                 url='https://account-api.ultiverse.io/api/user/signature',
                 json={'address': self.account.address, 'chainId': 59144, 'feature': 'assets-wallet-login'}
@@ -573,7 +573,7 @@ class LineaPark(ProfileClient):
                 json={"referralCode": "Linea", "chainId": 59144}
             )
             if not data['success']:
-                my_logger.warning(
+                logger.warning(
                     f'{self.profile.id} | {self.account.address} | '
                     f'{name} couldn\'t use ref code, maybe already reigestered'
                 )
@@ -710,7 +710,7 @@ class LineaPark(ProfileClient):
             }
         ]
         slippage = 0.2
-        async with ProfileSession(self.profile, headers={'Origin': 'https://swap.dodoex.io'}) as session:
+        async with Profilecurl_cffiAsyncSession(self.profile, headers={'Origin': 'https://swap.dodoex.io'}) as session:
             while True:
                 response, data = await session.get(
                     url='https://api.dodoex.io/route-service/v2/widget/getdodoroute',
@@ -803,7 +803,7 @@ class LineaPark(ProfileClient):
                 "type": "function"
             }
         ]
-        async with ProfileSession(self.profile, headers={'Origin': 'https://content-hub.readon.me'}) as session:
+        async with Profilecurl_cffiAsyncSession(self.profile, headers={'Origin': 'https://content-hub.readon.me'}) as session:
             response, data = await session.post(
                 url='https://readon-api.readon.me/web/wallet_login',
                 json={
@@ -894,7 +894,7 @@ class LineaPark(ProfileClient):
             'Origin': 'https://socialscan.io',
             'Referer': 'https://socialscan.io/campaign/linea-park'
         }
-        async with ProfileSession(self.profile, headers=headers) as session:
+        async with Profilecurl_cffiAsyncSession(self.profile, headers=headers) as session:
             response, data = await session.post(
                 url='https://api.w3w.ai/v1/socialscan/user/login',
                 json={'wallet_address': self.account.address.lower(), 'message': message, 'signature': signature}
@@ -919,7 +919,7 @@ class LineaPark(ProfileClient):
                     ])
                 )
             else:
-                my_logger.success(
+                logger.success(
                     f'{self.profile.id} | {self.account.address} | {name} (Linea Data Scanner) already minted'
                 )
             if 'linea_gang' not in badges:
@@ -947,7 +947,7 @@ class LineaPark(ProfileClient):
                     ])
                 )
             else:
-                my_logger.success(
+                logger.success(
                     f'{self.profile.id} | {self.account.address} | {name} (Linea Gang) already minted'
                 )
                 return True
@@ -1057,7 +1057,7 @@ class LineaPark(ProfileClient):
         ]
         collection_address = '0x0dE240B2A3634fCD72919eB591A7207bDdef03cd'
         if (await self.balance_of(token_address=collection_address)).Ether > 0:
-            my_logger.success(f'{self.profile.id} | {self.account.address} | {name} already minted')
+            logger.success(f'{self.profile.id} | {self.account.address} | {name} already minted')
             return True
         contract = self.w3.eth.contract(
             address=self.w3.to_checksum_address('0xecbee1a087aa83db1fcc6c2c5effc30bcb191589'),
@@ -1183,7 +1183,7 @@ class LineaPark(ProfileClient):
                 'Origin': 'https://play.sidusheroes.com',
                 'Referer': 'https://play.sidusheroes.com/'
             }
-            async with ProfileSession(self.profile, headers=headers) as session:
+            async with Profilecurl_cffiAsyncSession(self.profile, headers=headers) as session:
                 try:
                     response, data = await session.get(
                         url=f'https://auth.sidusheroes.com/api/v1/users/{self.account.address.lower()}'
@@ -1219,7 +1219,7 @@ class LineaPark(ProfileClient):
                         }
                     )
                 except (TypeError, RequestsError):
-                    my_logger.warning(f'{self.profile.id} | {self.account.address} | {name} couldn\'t mint')
+                    logger.warning(f'{self.profile.id} | {self.account.address} | {name} couldn\'t mint')
                     return
                 message = data['message']
                 signature = data['signature']
@@ -1231,7 +1231,7 @@ class LineaPark(ProfileClient):
                 )
                 await sleep(10, 20)
         else:
-            my_logger.success(f'{self.profile.id} | {self.account.address} | {name} already minted')
+            logger.success(f'{self.profile.id} | {self.account.address} | {name} already minted')
         return await self.tx(contract.address, f'{name} (burn)', contract.encodeABI('burn', args=[
             self.account.address, 9, 1
         ]), check_existing=False)
@@ -1280,7 +1280,7 @@ class LineaPark(ProfileClient):
                 f"Wallet address:\n{address}\n\nNonce: {int(time() / 86400)}"
             )
             signature = self.sign(message)
-            async with ProfileSession(self.profile, headers=headers) as session:
+            async with Profilecurl_cffiAsyncSession(self.profile, headers=headers) as session:
                 form_data = {
                     "header": {
                         "referer": "",
@@ -1313,7 +1313,7 @@ class LineaPark(ProfileClient):
                 ):
                     return False
         else:
-            my_logger.success(f'{self.profile.id} | {self.account.address} | {name} already created account')
+            logger.success(f'{self.profile.id} | {self.account.address} | {name} already created account')
 
         abi = [
             {
@@ -1346,7 +1346,7 @@ class LineaPark(ProfileClient):
         )
         await sleep(10, 20)
         headers = {'Origin': 'https://townstory.io', 'Referer': 'https://townstory.io/linea'}
-        async with ProfileSession(self.profile, headers=headers) as session:
+        async with Profilecurl_cffiAsyncSession(self.profile, headers=headers) as session:
             response, data = await session.post(
                 url='https://townstory.io//api',
                 data={'action': 'getLineaSign', 'address': self.account.address.lower()}
@@ -1365,9 +1365,9 @@ class LineaPark(ProfileClient):
                         await task_done(self.profile.evm_address, task_name)
                         await sleep(30, 60)
                 else:
-                    my_logger.success(f'{self.profile.id} | {self.account.address} | {task_name} already done')
+                    logger.success(f'{self.profile.id} | {self.account.address} | {task_name} already done')
                     await task_done(self.profile.evm_address, task_name)
-        my_logger.success(f'{self.profile.id} | {self.account.address} | All tasks done')
+        logger.success(f'{self.profile.id} | {self.account.address} | All tasks done')
 
 
 async def start(profile: Profile):

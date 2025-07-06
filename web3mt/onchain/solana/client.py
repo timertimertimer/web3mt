@@ -13,7 +13,7 @@ from web3db.models import Profile
 
 from web3mt.config import env, DEV
 from web3mt.onchain.solana.models.token import Token
-from web3mt.utils.logger import my_logger
+from web3mt.utils.logger import logger
 
 rpcs = [
     'https://api.mainnet-beta.solana.com',
@@ -40,7 +40,7 @@ class BaseClient:
             self,
             account: Keypair = None,
             rpc: str = rpcs[0],
-            proxy: str = env.DEFAULT_PROXY
+            proxy: str = env.default_proxy
     ):
         self._rpc = rpc
         self.proxy = proxy
@@ -50,14 +50,14 @@ class BaseClient:
         return self.log_info
 
     async def __aenter__(self):
-        my_logger.info(f'{self.log_info} | Started')
+        logger.info(f'{self.log_info} | Started')
         return self
 
     async def __aexit__(self, exc_type, exc_val, exc_tb):
         if exc_type:
-            my_logger.error(f'{self.log_info} | {exc_val}')
+            logger.error(f'{self.log_info} | {exc_val}')
         else:
-            my_logger.success(f'{self.log_info} | Tasks done')
+            logger.success(f'{self.log_info} | Tasks done')
 
     @property
     def rpc(self) -> str:
@@ -94,7 +94,7 @@ class BaseClient:
 
     async def my_balance(self, address: Pubkey | str = None):
         balance = await self.client.get_balance(address or self.account.pubkey())
-        my_logger.info(f'{self} | {balance.value / 10 ** 9} SOL')
+        logger.info(f'{self} | {balance.value / 10 ** 9} SOL')
 
     async def get_transactions(self) -> list[RpcConfirmedTransactionStatusWithSignature]:
         resp = await self.client.get_signatures_for_address(self.account.pubkey())
@@ -131,7 +131,7 @@ async def get_balance_batch(profiles: list[Profile], rpc: str = None):
         parsers = (GetBalanceResp,) * len(profiles_)
         resps = await provider.make_batch_request(reqs, parsers)  # type: ignore
         for resp, profile in zip(resps, profiles_):
-            my_logger.info(
+            logger.info(
                 f'{profile.id} | {Keypair.from_base58_string(profile.solana_private).pubkey()} | {resp.value / 10 ** 9} SOL'
             )
 

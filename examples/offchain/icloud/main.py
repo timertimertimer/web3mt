@@ -4,9 +4,9 @@ from datetime import timedelta
 from sqlalchemy import select, desc
 
 from examples.offchain.icloud.model import CONNECTION_STRING, IcloudEmail
-from web3mt.utils import CustomAsyncSession, sleep
+from web3mt.utils import curl_cffiAsyncSession, sleep
 from web3mt.utils.db import create_db_instance
-from web3mt.utils.logger import my_logger as logger
+from web3mt.utils.logger import logger
 
 with open('cookies.txt', encoding='utf-8') as file:
     cookie_str = file.read().strip()
@@ -29,7 +29,7 @@ class Icloud:
     }
 
     def __init__(self):
-        self.session = CustomAsyncSession()
+        self.session = curl_cffiAsyncSession()
         self.session.cookies.update(cookies)
         self.session.headers.update({'Origin': 'https://www.icloud.com'})
 

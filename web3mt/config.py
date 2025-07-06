@@ -11,27 +11,29 @@ class ENV(BaseSettings):
         env_file=env_path, env_file_encoding="utf-8", extra="ignore"
     )
 
-    PASSPHRASE: Optional[str] = None
-    DEFAULT_PROXY: Optional[str] = None
-    ROTATING_PROXY: Optional[str] = None
-    SOME_PASSWORD: Optional[str] = None
-    DEFAULT_EVM_ADDRESS: Optional[str] = None
+    passphrase: Optional[str] = None
+    default_proxy: Optional[str] = None
+    rotating_proxy: Optional[str] = None
+    some_password: Optional[str] = None
+    default_evm_address: Optional[str] = None
 
-    WEBSHARE_API_KEY: Optional[str] = None
-    OPENAI_API_KEY: Optional[str] = None
-    CAPMONSTER_API_KEY: Optional[str] = None
-    TWO_CAPTCHA_API_KEY: Optional[str] = None
-    COINGECKO_API_KEY: Optional[str] = None
-    ALCHEMY_API_KEY: Optional[str] = None
-    THIRDWEB_API_KEY: Optional[str] = None
-    CAPSOLVER_API_KEY: Optional[str] = None
-    HELIUS_API_KEY: Optional[str] = None
+    webshare_api_key: Optional[str] = None
+    openai_api_key: Optional[str] = None
+    capmonster_api_key: Optional[str] = None
+    two_captcha_api_key: Optional[str] = None
+    coingecko_api_key: Optional[str] = None
+    alchemy_api_key: Optional[str] = None
+    thirdweb_api_key: Optional[str] = None
+    capsolver_api_key: Optional[str] = None
+    helius_api_key: Optional[str] = None
 
-    CONNECTION_STRING: Optional[str] = None
+    connection_string: Optional[str] = None
 
-    OKX_API_KEY: Optional[str] = None
-    OKX_API_SECRET: Optional[str] = None
-    OKX_API_PASSPHRASE: Optional[str] = None
+    okx_api_key: Optional[str] = None
+    okx_api_secret: Optional[str] = None
+    okx_api_passphrase: Optional[str] = None
+
+    retry_count: int = 5
 
 
 class TronENV(BaseSettings):
@@ -39,12 +41,12 @@ class TronENV(BaseSettings):
         env_file=env_path, env_file_encoding="utf-8", extra="ignore"
     )
 
-    TRON_LEDGER_PRIVATE_KEY: Optional[str] = None
-    TRON_LEDGER_MNEMONIC: Optional[str] = None
-    TRON_PRIVATE_KEY: Optional[str] = None
-    TRON_MNEMONIC: Optional[str] = None
-    TRONGRID_API_KEY: Optional[str] = None
-    TRON_WITNESS_PRIVATE_KEY: Optional[str] = None
+    tron_ledger_private_key: Optional[str] = None
+    tron_ledger_mnemonic: Optional[str] = None
+    tron_private_key: Optional[str] = None
+    tron_mnemonic: Optional[str] = None
+    trongrid_api_key: Optional[str] = None
+    tron_witness_private_key: Optional[str] = None
     nile_rpc: str = "https://nile.trongrid.io"
     tron_public_rpc: str = "https://tron-rpc.publicnode.com"
     symbol: str = "TRX"
@@ -62,7 +64,16 @@ class BTClikeENV(BaseSettings):
     litecoin_mnemonic: Optional[str] = None
 
 
+class CEXENV(BaseSettings):
+    model_config = SettingsConfigDict(
+        env_file=env_path, env_file_encoding="utf-8", extra="ignore"
+    )
+
+    binance_api_key: Optional[str] = None
+    binance_api_secret: Optional[str] = None
+
 env = ENV()
 tron_env = TronENV()
 btc_env = BTClikeENV()
-DEV = False
+cex_env = CEXENV()
+DEV = True

@@ -6,7 +6,7 @@ from web3db import DBHelper, Profile
 from dotenv import load_dotenv
 
 from web3mt.onchain.evm.client import ProfileClient
-from web3mt.utils import ProfileSession, logger, sleep
+from web3mt.utils import Profilecurl_cffiAsyncSession, logger, sleep
 
 load_dotenv()
 
@@ -15,7 +15,7 @@ async def register(profile: Profile):
     api = "https://sophon.xyz/api"
     headers = {"Origin": "https://sophon.xyz", "Referer": "https://sophon.xyz/"}
     client = ProfileClient(profile=profile)
-    async with ProfileSession(profile, headers=headers, sleep_echo=False) as session:
+    async with Profilecurl_cffiAsyncSession(profile, headers=headers, sleep_echo=False) as session:
         while True:
             try:
                 response, data = await session.get(f"{api}/users/{profile.evm_address}")

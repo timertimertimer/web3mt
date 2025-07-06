@@ -17,7 +17,7 @@ from web3db.core import DBHelper
 from web3db.models import Profile
 
 from web3mt.config import env
-from web3mt.utils.logger import my_logger
+from web3mt.utils.logger import logger
 
 # rpc = f"https://mainnet.helius-rpc.com/?api-key={env.HELIUS_API_KEY}"
 rpc = 'https://grateful-jerrie-fast-mainnet.helius-rpc.com/'
@@ -38,7 +38,7 @@ async def get_balance_batch(profiles: list[Profile]):
         for resp, profile in zip(resps, profiles_):
             balance = resp.value / 10 ** 9
             total += balance
-            my_logger.info(
+            logger.info(
                 f'{profile.id} | {Keypair.from_base58_string(profile.solana_private).pubkey()} | {balance} SOL'
             )
     return total
@@ -48,7 +48,7 @@ async def get_balance(profile: Profile):
     client = AsyncClient(rpc)
     address = Keypair.from_base58_string(profile.solana_private).pubkey()
     balance = await client.get_balance(address)
-    my_logger.info(f'{profile.id} | {address} | {balance.value / 10 ** 9} SOL')
+    logger.info(f'{profile.id} | {address} | {balance.value / 10 ** 9} SOL')
 
 
 def get_metadata_address(mint_address: Pubkey) -> Pubkey:
@@ -86,11 +86,11 @@ async def get_token_balance_batch(profiles: list[Profile], token_address: Pubkey
             if resp.value:
                 balance = int(resp.value[0].account.data.parsed['info']['tokenAmount']['amount']) / 10 ** 6
                 total += balance
-                my_logger.info(
+                logger.info(
                     f'{profile.id} | {Keypair.from_base58_string(profile.solana_private).pubkey()} | {balance} SOL'
                 )
             else:
-                my_logger.info(
+                logger.info(
                     f'{profile.id} | {Keypair.from_base58_string(profile.solana_private).pubkey()} | 0 SOL'
                 )
     return total
@@ -107,7 +107,7 @@ async def main():
     # profiles = await db.get_all_from_table(Profile)
     profiles = await db.get_rows_by_id([1], Profile)
     total = await get_token_balance_batch(profiles, OGMEME_token_mint_address)
-    my_logger.success(f'Total: {total} SOL')
+    logger.success(f'Total: {total} SOL')
     # await asyncio.gather(*[get_token_balance(profile, OGMEME_token_mint_address) for profile in profiles])
 
 

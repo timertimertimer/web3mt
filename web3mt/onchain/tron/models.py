@@ -2,7 +2,7 @@ from decimal import Decimal, InvalidOperation
 
 from web3mt.models import Coin
 from web3mt.utils import format_number
-from web3mt.utils.logger import my_logger as logger
+from web3mt.utils.logger import logger
 
 tron_default_decimals = 6
 tron_symbol = 'TRX'

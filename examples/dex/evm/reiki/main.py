@@ -15,13 +15,13 @@ from web3db.utils import decrypt
 from db import *
 from config import *
 from onchain import *
-from web3mt.utils import my_logger, ProfileSession
+from web3mt.utils import logger, Profilecurl_cffiAsyncSession
 
 
 class Reiki:
     def __init__(self, profile: Profile):
         self.profile = profile
-        self.session = ProfileSession(profile)
+        self.session = Profilecurl_cffiAsyncSession(profile)
         self.client = ProfileClient(chain=opBNB, profile=profile)
 
     async def __aenter__(self):
@@ -29,9 +29,9 @@ class Reiki:
 
     async def __aexit__(self, exc_type, exc_val, exc_tb):
         if exc_type:
-            my_logger.error(exc_val)
+            logger.error(exc_val)
         else:
-            my_logger.success(f'{self.profile.id} | Tasks completed')
+            logger.success(f'{self.profile.id} | Tasks completed')
         await self.session.close()
 
     async def start_tasks(self, choice: int) -> None:
@@ -40,7 +40,7 @@ class Reiki:
             if not data['referrerWalletAddress']:
                 await self.refer()
             else:
-                my_logger.success(f'{self.profile.id} | Already referred by {data["referrerWalletAddress"]}')
+                logger.success(f'{self.profile.id} | Already referred by {data["referrerWalletAddress"]}')
             await self.claim_gifts()
             all_tasks = [
                 self.claim_daily(),
@@ -62,7 +62,7 @@ class Reiki:
                 response.raise_for_status()
                 total = data["total"] if "total" in data else 0
                 today = data["today"] if "today" in data else 0
-                my_logger.success(f'{self.profile.id} | Points: today/total - {today}/{total}')
+                logger.success(f'{self.profile.id} | Points: today/total - {today}/{total}')
                 await update_total_points(self.profile.id, total)
                 return total
             except RequestsError:
@@ -81,7 +81,7 @@ class Reiki:
         }
         response, data = await self.session.post(url=url, json=payload)
         nonce = data['nonce']
-        my_logger.success(f'{self.profile.id} | Nonce: {nonce}')
+        logger.success(f'{self.profile.id} | Nonce: {nonce}')
         return nonce
 
     async def web3_challenge(self, nonce: str) -> str:
@@ -95,7 +95,7 @@ class Reiki:
         }
         response, data = await self.session.post(url=url, json=payload)
         token = data['extra']['token']
-        my_logger.success(f'{self.profile.id} | Bearer token: {token}')
+        logger.success(f'{self.profile.id} | Bearer token: {token}')
         return token
 
     def message_and_sign_message(self, nonce: str) -> tuple[str, str]:
@@ -120,20 +120,20 @@ class Reiki:
         self.session.headers['X-Referral-Code'] = referral_code
         response, data = await self.session.get(url=url)
         if data['msg'] == 'success':
-            my_logger.success(f"{self.profile.id} | Referred by {referral_code}")
+            logger.success(f"{self.profile.id} | Referred by {referral_code}")
         else:
-            my_logger.error(f'{self.profile.id} | {data}')
+            logger.error(f'{self.profile.id} | {data}')
 
     async def claim_gifts(self) -> None:
         url = REIKI_API + 'gift'
         response, data = await self.session.request(method='GET', url=url, params={'type': 'recent'})
         if response.status_code == 200:
             if data:
-                my_logger.info(f'{self.profile.id} | Got gifts')
+                logger.info(f'{self.profile.id} | Got gifts')
             else:
-                my_logger.success(f'{self.profile.id} | All gifts are opened')
+                logger.success(f'{self.profile.id} | All gifts are opened')
         else:
-            my_logger.error(f'{self.profile.id} | {data["message"]}')
+            logger.error(f'{self.profile.id} | {data["message"]}')
         for gift in data:
             gift_id = gift['id']
             gift_name = gift['name']
@@ -141,11 +141,11 @@ class Reiki:
                 url = REIKI_API + f'gift/open/{gift_id}'
                 response, data = await self.session.request(method='POST', url=url)
                 if data == 'true':
-                    my_logger.success(f'{self.profile.id} | Opened gift - {gift_name}')
+                    logger.success(f'{self.profile.id} | Opened gift - {gift_name}')
                 else:
-                    my_logger.error(f"{self.profile.id} | Couldn't open gift - {gift_name}")
+                    logger.error(f"{self.profile.id} | Couldn't open gift - {gift_name}")
             else:
-                my_logger.success(f'{self.profile.id} | Already opened gift - {gift_name}')
+                logger.success(f'{self.profile.id} | Already opened gift - {gift_name}')
 
     async def claim_daily(self) -> None:
         url = REIKI_API + "checkin/points/his"
@@ -166,9 +166,9 @@ class Reiki:
                     await self.session.request(
                         method='PUT', url=url, params={'day': datetime.now().strftime("%Y-%m-%d")}
                     )
-                    my_logger.success(f'{self.profile.id} | Daily claimed')
+                    logger.success(f'{self.profile.id} | Daily claimed')
                 else:
-                    my_logger.success(f"{self.profile.id} | Daily already claimed")
+                    logger.success(f"{self.profile.id} | Daily already claimed")
                 break
 
     async def quizzes(self) -> None:
@@ -178,7 +178,7 @@ class Reiki:
                 response, data = await self.session.request(method='GET', url=url)
                 break
             except RequestsError as e:
-                my_logger.error(f'{self.profile.id} | {url} {e.message}')
+                logger.error(f'{self.profile.id} | {url} {e.message}')
                 if e.status == 401:
                     await self.create_bearer_token()
                 else:
@@ -186,13 +186,13 @@ class Reiki:
         qs = random.sample(data, len(data))
         for quiz in qs:
             if quiz['currentProgress'] == quiz['totalItemCount']:
-                my_logger.success(f'{self.profile.id} | Quiz {quiz["title"]} already completed')
+                logger.success(f'{self.profile.id} | Quiz {quiz["title"]} already completed')
                 continue
             quiz_id = quiz['id']
             url = REIKI_API + 'quiz/' + quiz_id
             response, data = await self.session.request(method='GET', url=url)
             questions = data['items']
-            my_logger.info(
+            logger.info(
                 f'{self.profile.id} | Quiz {quiz["title"]}. {quiz["totalItemCount"] - quiz["currentProgress"]} '
                 f'questions left'
             )
@@ -205,9 +205,9 @@ class Reiki:
                 url = REIKI_API + 'quiz/' + question_id + '/answer'
                 response, data = await self.session.request(method='POST', url=url, json=payload)
                 if response.status_code == 201 or data['message'] == 'Already answered':
-                    my_logger.success(f'{self.profile.id} | {data["message"]}')
+                    logger.success(f'{self.profile.id} | {data["message"]}')
                 else:
-                    my_logger.info(f'{self.profile.id} | {data["message"]}')
+                    logger.info(f'{self.profile.id} | {data["message"]}')
 
     async def profile_(self):
         url = REIKI_API + 'profile'
@@ -221,11 +221,11 @@ class Reiki:
             'discord': self.connect_discord
         }
         if data['email'] == self.profile.email.login:
-            my_logger.success(f'{self.profile.id} | Email {data["email"]} already connected')
+            logger.success(f'{self.profile.id} | Email {data["email"]} already connected')
             social_tasks.pop('email')
         for social in data['socials']:
             social_tasks.pop(social['type'])
-            my_logger.success(f'{self.profile.id} | {social["type"].capitalize()} already connected')
+            logger.success(f'{self.profile.id} | {social["type"].capitalize()} already connected')
         for task in social_tasks:
             await social_tasks[task]()
 
@@ -235,19 +235,19 @@ class Reiki:
             method='PATCH', url=url, json={'email': self.profile.email.login, 'name': None}
         )
         if data == 'true':
-            my_logger.success(f'{self.profile.id} | Email connected')
+            logger.success(f'{self.profile.id} | Email connected')
         else:
-            my_logger.warning(f"{self.profile.id} | Couldn't connect email - {data}")
+            logger.warning(f"{self.profile.id} | Couldn't connect email - {data}")
 
     async def connect_twitter(self) -> bool:
         if not self.profile.twitter.ready:
-            my_logger.warning(f'{self.profile.id} | Twitter is not ready, skipping')
+            logger.warning(f'{self.profile.id} | Twitter is not ready, skipping')
             return False
         url = REIKI_API + 'oauth/twitter2/'
         try:
             response, data = await self.session.request(method='GET', url=url, follow_redirects=True)
         except RequestsError as e:
-            my_logger.error(f'{self.profile.id} | {url} {e.message}')
+            logger.error(f'{self.profile.id} | {url} {e.message}')
             return False
         payload = {}
         for el in response.url.split('authorize?')[-1].split('&'):
@@ -262,7 +262,7 @@ class Reiki:
         try:
             code = await client.oauth2(**payload)
         except Forbidden as e:
-            my_logger.warning(
+            logger.warning(
                 f'{self.profile.id} | Couldn\'t connect twitter. Account status {client.account.status}'
             )
             return False
@@ -274,7 +274,7 @@ class Reiki:
         try:
             response, data = await self.session.request(method='GET', url=url, follow_redirects=True)
         except RequestsError as e:
-            my_logger.error(f'{self.profile.id} | {url} {e.message}')
+            logger.error(f'{self.profile.id} | {url} {e.message}')
             return False
         payload = {
             'redirect_uri': 'https://reiki.web3go.xyz/api/oauth/discord/callback',
@@ -291,7 +291,7 @@ class Reiki:
             async with DiscordClient(proxy=self.profile.proxy.proxy_string) as client:
                 code = await client.create_authorization(application_id, **payload)
         except HTTPException as e:
-            my_logger.warning(f'{self.profile.id} | Discord token not valid, can\'t get oauth code')
+            logger.warning(f'{self.profile.id} | Discord token not valid, can\'t get oauth code')
             return
         await self.callback(url, code, payload['state'])
 
@@ -304,16 +304,16 @@ class Reiki:
             follow_redirects=True
         )
         if response.url.query.get('success') == 'true':
-            my_logger.success(f"{self.profile.id} | {url} connected")
+            logger.success(f"{self.profile.id} | {url} connected")
         else:
-            my_logger.error(f"{self.profile.id} | {response.url}")
+            logger.error(f"{self.profile.id} | {response.url}")
 
     async def try_lottery(self):
         url = REIKI_API + 'lottery/'
         while True:
             response, data = await self.session.request(method='GET', url=url + 'offchain')
             chip_num, piece_num, user_gold_leaf_count = data['chipNum'], data['pieceNum'], data['userGoldLeafCount']
-            my_logger.info(
+            logger.info(
                 f'{self.profile.id} | Lottery status: Chips/Pieces - {chip_num}/{piece_num}. '
                 f'Gold leafs left - {user_gold_leaf_count}'
             )
@@ -322,7 +322,7 @@ class Reiki:
                 await update_chips(self.profile.id, chip_num, piece_num)
                 break
             response, data = await self.session.request(method='POST', url=url + 'try')
-            my_logger.success(f"{self.profile.id} | Prize: {data['prize']}")
+            logger.success(f"{self.profile.id} | Prize: {data['prize']}")
 
     async def claim_chip(self):
         url = REIKI_API + 'lottery/claim'

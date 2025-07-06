@@ -12,7 +12,7 @@ from tronpy.exceptions import AddressNotFound
 from web3mt.config import DEV, tron_env
 from web3mt.onchain.evm.models import DefaultABIs
 from web3mt.onchain.tron.models import Token, tron_symbol, TokenAmount
-from web3mt.utils.logger import my_logger as logger
+from web3mt.utils.logger import logger
 
 from web3mt.onchain.tron.account import TronAccount
 
@@ -50,7 +50,7 @@ class BaseClient:
         self.w3 = AsyncTron(
             AsyncHTTPProvider(
                 http_rpc,
-                api_key=tron_env.TRONGRID_API_KEY
+                api_key=tron_env.trongrid_api_key
                 if "trongrid" in http_rpc
                 else DEFAULT_API_KEY,
             )
@@ -204,13 +204,13 @@ async def freeze_balance():
 
 if __name__ == "__main__":
     ledger_account = (
-        TronAccount.from_key(tron_env.TRON_LEDGER_PRIVATE_KEY)
-        if tron_env.TRON_LEDGER_PRIVATE_KEY
-        else TronAccount.from_mnemonic(tron_env.TRON_LEDGER_MNEMONIC)
+        TronAccount.from_key(tron_env.tron_ledger_private_key)
+        if tron_env.tron_ledger_private_key
+        else TronAccount.from_mnemonic(tron_env.tron_ledger_mnemonic)
     )
     my_account = (
-        TronAccount.from_key(tron_env.TRON_PRIVATE_KEY)
-        if tron_env.TRON_PRIVATE_KEY
-        else TronAccount.from_mnemonic(tron_env.TRON_MNEMONIC)
+        TronAccount.from_key(tron_env.tron_private_key)
+        if tron_env.tron_private_key
+        else TronAccount.from_mnemonic(tron_env.tron_mnemonic)
     )
     asyncio.run(deposit_from_ledger())

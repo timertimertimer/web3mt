@@ -16,8 +16,8 @@ class RouterNitro(Bridge):
             toTokenChainId=bridge_info.token_out.chain.chain_id,
             partnerId=1
         )
-        response, data = await self.session.get(self.API_URL + 'quote', params=params)
-        response, data = await self.session.post(
+        response, data = await self.http_session.get(self.API_URL + 'quote', params=params)
+        response, data = await self.http_session.post(
             self.API_URL + 'transaction',
             json={
                 **data, 'senderAddress': bridge_info.user, 'receiverAddress': bridge_info.recipient,
@@ -31,7 +31,7 @@ class RouterNitro(Bridge):
             amount=int(data["destination"]["tokenAmount"]), is_wei=True, token=bridge_info.token_out
         )
         tx_data = data["txn"]
-        bridge_info.tx_params = await self.client.create_tx_params(
+        bridge_info.tx_params = await self.evm_client.create_tx_params(
             to=tx_data['to'], value=bridge_info.token_amount_in,
             data=self.get_data(
                 to=tx_data['to'],
@@ -57,13 +57,13 @@ class RouterNitro(Bridge):
             destination_chain_id_bytes: str,
             partner_id: int = 1
     ):
-        return self.client.w3.eth.contract(to_checksum_address(to), abi=self.ABI['router_asset_forwarder']).encode_abi(
+        return self.evm_client.w3.eth.contract(to_checksum_address(to), abi=self.ABI['router_asset_forwarder']).encode_abi(
             'iDeposit',
             args=[
                 [
-                    partner_id, source_value, destination_value, source_token, self.client.account.address,
+                    partner_id, source_value, destination_value, source_token, self.evm_client.account.address,
                     to_bytes(hexstr=destination_chain_id_bytes)
                 ],
-                to_bytes(hexstr=destination_token), to_bytes(hexstr=self.client.account.address)
+                to_bytes(hexstr=destination_token), to_bytes(hexstr=self.evm_client.account.address)
             ]
         )

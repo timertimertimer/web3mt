@@ -4,7 +4,7 @@ from email.message import Message
 from typing import Iterable
 from aioimaplib.aioimaplib import IMAP4_SSL, Abort, CommandTimeout
 
-from web3mt.utils import CustomAsyncSession, my_logger as logger, sleep
+from web3mt.utils import curl_cffiAsyncSession, sleep, logger
 from web3db import Email
 
 IMAP_SERVERS = {
@@ -131,7 +131,7 @@ class IMAPClient(IMAP4_SSL):
 class MicrosoftIMAPClient(IMAPClient):
     async def _update_access_token(self) -> str:
         try:
-            async with CustomAsyncSession(
+            async with curl_cffiAsyncSession(
                     headers={'Content-Type': 'application/x-www-form-urlencoded'}, proxy=self.proxy
             ) as session:
                 _, data = await session.post(url="https://login.microsoftonline.com/common/oauth2/v2.0/token", data={
@@ -148,7 +148,7 @@ class MicrosoftIMAPClient(IMAPClient):
 class GoogleIMAPClient(IMAPClient):
     async def _update_access_token(self) -> str:
         try:
-            async with CustomAsyncSession(
+            async with curl_cffiAsyncSession(
                     headers={'Content-Type': 'application/x-www-form-urlencoded'}, proxy=self.proxy
             ) as session:
                 _, data = await session.post(url="https://oauth2.googleapis.com/token", data={

@@ -1,5 +1,5 @@
 from web3db import Profile
-from web3mt.utils import ProfileSession, my_logger
+from web3mt.utils import Profilecurl_cffiAsyncSession, logger
 from web3mt.onchain.aptos.client import Client
 from web3mt.onchain.aptos.models import TokenAmount
 from web3mt.config import env
@@ -9,10 +9,10 @@ class BlueMove(Client):
     BLUEMOVE_API_URL = 'https://aptos-mainnet-api.bluemove.net/api/'
 
     def __init__(
-            self, profile: Profile, encryption_password: str = env.PASSPHRASE, node_url: str = Client.NODE_URL
+            self, profile: Profile, encryption_password: str = env.passphrase, node_url: str = Client.NODE_URL
     ):
         super().__init__(profile, encryption_password=encryption_password, node_url=node_url)
-        self.session = ProfileSession(
+        self.session = Profilecurl_cffiAsyncSession(
             profile,
             headers={'Origin': 'https://bluemove.net', 'Referer': 'https://bluemove.net/'}
         )
@@ -74,13 +74,13 @@ class BlueMove(Client):
 
     async def batch_list_token_v2(self, storage_ids: list[str] | str, prices: list[float] | float) -> int | bool:
         if not storage_ids:
-            my_logger.warning(f'{self.log_info} | Nothing to list. Storage ids list is empty')
+            logger.warning(f'{self.log_info} | Nothing to list. Storage ids list is empty')
             return False
         if isinstance(storage_ids, str):
             storage_ids = [storage_ids]
         if isinstance(prices, float):
             prices = [prices] * len(storage_ids)
-        my_logger.info(f'{self.log_info} | Listing {storage_ids}')
+        logger.info(f'{self.log_info} | Listing {storage_ids}')
         payload = self.PAYLOAD
         payload['function'] = (
             "0xd520d8669b0a3de23119898dcdff3e0a27910db247663646ad18cf16e44c6f5"
@@ -95,7 +95,7 @@ class BlueMove(Client):
         return await self.send_transaction(payload)
 
     async def edit_listing_price(self, token_name: str, listing_id: str, price: float) -> int | bool:
-        my_logger.info(f'{self.log_info} | Editing listing price {token_name}')
+        logger.info(f'{self.log_info} | Editing listing price {token_name}')
         payload = self.PAYLOAD.copy()
         payload['function'] = (
             "0xd520d8669b0a3de23119898dcdff3e0a27910db247663646ad18cf16e44c6f5"

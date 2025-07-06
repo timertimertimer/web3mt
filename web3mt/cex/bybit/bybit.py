@@ -6,6 +6,7 @@ import uuid
 from decimal import Decimal
 from functools import partialmethod
 from hashlib import sha256
+from urllib.parse import urlencode
 
 from web3db import Profile, DBHelper
 
@@ -13,7 +14,7 @@ from web3mt.cex.base import CEX
 from web3mt.cex.models import Asset, Account, User
 from web3mt.config import DEV, env
 from web3mt.models import Coin
-from web3mt.utils import my_logger
+from web3mt.utils import logger
 
 __all__ = ['Bybit']
 
@@ -36,7 +37,8 @@ def create_currencies_with_comma_string(coins: list[Asset | Coin | str]) -> str:
 
 class Bybit(CEX):
     API_VERSION = 5
-    URL = f'https://api.bybit.com/v{API_VERSION}'
+    MAIN_ENDPOINT = 'https://api.bybit.com'
+    URL = f'{MAIN_ENDPOINT}/v{API_VERSION}'
     NAME = 'Bybit'
 
     async def get_server_timestamp(self) -> str:
@@ -45,8 +47,8 @@ class Bybit(CEX):
 
     async def get_headers(self, path: str, method: str = 'GET', recv_window: int = 10000, **kwargs):
         timestamp = await self.get_server_timestamp() or str(int(time.time() * 10 ** 3))
-        params = kwargs.get('params', {})
-        params = '&'.join([f'{key}={value}' for key, value in params.items()])
+        params = urlencode(kwargs.get('params', {}))
+        params = urlencode(params)
         prehash_string = (
                 timestamp + self.profile.bybit.api_key + str(recv_window) + str(params) + kwargs.get('data', '')
         )
@@ -61,24 +63,24 @@ class Bybit(CEX):
             'X-BAPI-RECV-WINDOW': str(recv_window)
         }
 
-    async def request(self, method: str, path: str, **kwargs):
+    async def make_request(self, method: str, path: str, **kwargs):
         without_headers = kwargs.pop('without_headers', False)
-        response, data = await self.session.request(
+        response, data = await self.session.make_request(
             method, f'{self.URL}/{path}',
             headers={} if without_headers else await self.get_headers(path, method, **kwargs), **kwargs
         )
         if not data['result']:
-            my_logger.error(f'{self.log_info} | {data["retMsg"]}')
+            logger.error(f'{self.log_info} | {data["retMsg"]}')
             raise KeyError
         return response, data['result']
 
-    head = partialmethod(request, "HEAD")
-    get = partialmethod(request, "GET")
-    post = partialmethod(request, "POST")
-    put = partialmethod(request, "PUT")
-    patch = partialmethod(request, "PATCH")
-    delete = partialmethod(request, "DELETE")
-    options = partialmethod(request, "OPTIONS")
+    head = partialmethod(make_request, "HEAD")
+    get = partialmethod(make_request, "GET")
+    post = partialmethod(make_request, "POST")
+    put = partialmethod(make_request, "PUT")
+    patch = partialmethod(make_request, "PATCH")
+    delete = partialmethod(make_request, "DELETE")
+    options = partialmethod(make_request, "OPTIONS")
 
     async def get_coin_price(self, coin: str | Coin = 'ETH') -> Decimal:
         if coin.price:
@@ -116,7 +118,7 @@ class Bybit(CEX):
             for asset in assets if Decimal(asset['walletBalance'])
         ]
         if DEV:
-            my_logger.info(account)
+            logger.info(account)
         return account.assets
 
     async def get_main_uid(self) -> int:
@@ -146,7 +148,7 @@ class Bybit(CEX):
             balance_func = self.get_trading_balance if isinstance(from_account, Spot) else self.get_funding_balance
             assets = await balance_func(from_account, [asset])
             if not assets:
-                my_logger.info(f'No balance of {asset}')
+                logger.info(f'No balance of {asset}')
                 return
             asset: Asset = assets[0]
         amount = asset.format_available_balance(int((await self.get_coin_info(asset))[0]['minAccuracy']))
@@ -166,12 +168,12 @@ class Bybit(CEX):
             data = data | dict(fromMemberId=from_account.user.user_id, toMemberId=to_account.user.user_id)
         _, data = await self.post(url, data=json.dumps(data))
         if data and data['status'] == 'SUCCESS':
-            my_logger.success(
+            logger.success(
                 f'Transferred {asset} from {from_account.user.user_id} {from_account.NAME} to '
                 f'{to_account.user.user_id} {to_account.NAME}. ID - {data["result"]["transferId"]}'
             )
         else:
-            my_logger.warning(f'Couldn\'t transfer {asset}. {data["retMsg"]}')
+            logger.warning(f'Couldn\'t transfer {asset}. {data["retMsg"]}')
 
     async def get_coin_info(self, asset: Asset | Coin | str = None):
         match asset:

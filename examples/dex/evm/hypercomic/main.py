@@ -3,7 +3,7 @@ import asyncio
 from web3db import DBHelper, Profile
 from web3mt.onchain.evm.client import ProfileClient
 from web3mt.onchain.evm.models import TokenAmount, zkSync
-from web3mt.utils import CustomAsyncSession, FileManager, my_logger
+from web3mt.utils import curl_cffiAsyncSession, FileManager, logger
 
 url = "https://play.hypercomic.io/Claim/actionZK/conditionsCheck2"
 db = DBHelper()
@@ -28,7 +28,7 @@ abi = FileManager.read_json("abi.json")
 
 
 async def get_signature(proxy_string: str, nft_number: int, client: ProfileClient):
-    async with CustomAsyncSession(proxy_string) as session:
+    async with curl_cffiAsyncSession(proxy_string) as session:
         payload = {
             "trancnt": await client.nonce(),
             "walletgbn": "Metamask",
@@ -43,21 +43,21 @@ async def mint(profile: Profile):
     client = ProfileClient(chain=zkSync, profile=profile)
     client.default_abi = abi
     if not await client.balance_of():
-        my_logger.info(f"{client} | No balance, skipping")
+        logger.info(f"{client} | No balance, skipping")
         return
     for i, contract_address in contracts.items():
         contract = client.w3.eth.contract(
             address=client.w3.to_checksum_address(contract_address), abi=client.default_abi
         )
         if (await client.balance_of(contract=contract)).ether == 1:
-            my_logger.success(f"{profile.id} | {client.account.address} | Already minted NFT #{i}")
+            logger.success(f"{profile.id} | {client.account.address} | Already minted NFT #{i}")
             continue
         signature = (await get_signature(proxy_string=profile.proxy.proxy_string, nft_number=i, client=client)).strip()
         if not signature.startswith("0x"):
             if i == 6:
-                my_logger.warning(f"{profile.id} | {client.account.address} | Need dmail transaction")
+                logger.warning(f"{profile.id} | {client.account.address} | Need dmail transaction")
             else:
-                my_logger.warning(
+                logger.warning(
                     f"{profile.id} | {client.account.address} | Contract: {contract_address} Signature: {signature}"
                 )
             continue

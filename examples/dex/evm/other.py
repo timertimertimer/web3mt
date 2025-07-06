@@ -1,7 +1,5 @@
 import asyncio
-import random
 
-from eth_utils import to_checksum_address, to_wei
 from web3db import Profile, DBHelper
 
 from examples.dex.evm.config import abis
@@ -10,8 +8,8 @@ from web3mt.onchain.evm.client import ProfileClient
 from web3mt.onchain.evm.models import *
 from web3mt.config import env
 from web3mt.onchain.evm.models import OP_Sepolia, Xterio
-from web3mt.utils import my_logger, sleep, FileManager, CustomAsyncSession, ProfileSession
-from web3mt.utils.custom_sessions import SessionConfig
+from web3mt.utils import logger, sleep, FileManager, Profilecurl_cffiAsyncSession
+from web3mt.utils.http_sessions import SessionConfig
 
 db = DBHelper(env.LOCAL_CONNECTION_STRING)
 main_chains = [Ethereum, Scroll, zkSync, Base, Zora, Optimism, Arbitrum]
@@ -81,7 +79,7 @@ async def check_yogapetz_insights(profile: Profile):
     contract = client.w3.eth.contract(address='0x73A0469348BcD7AAF70D9E34BBFa794deF56081F', abi=abi)
     res = await contract.functions.questResults(client.account.address).call()
     if any(res):
-        my_logger.success(
+        logger.success(
             f'{profile.id} | {client.account.address} | Uncommon: {res[0]}, Rare: {res[1]}, Legendary: {res[2]}, '
             f'Mythical: {res[3]}'
         )
@@ -103,8 +101,8 @@ async def polymer_faucet(profile: Profile):
 
 
 async def bridge_to_xterio(profile: Profile):
-    if not await ProfileSession(profile, config=SessionConfig(sleep_after_request=False, retry_count=1)).check_proxy():
-        profile.proxy.proxy_string = env.DEFAULT_PROXY
+    if not await Profilecurl_cffiAsyncSession(profile, config=SessionConfig(sleep_after_request=False, retry_count=1)).check_proxy():
+        profile.proxy.proxy_string = env.default_proxy
 
     bsc_client = ProfileClient(chain=BSC, profile=profile)
     xterio_client = ProfileClient(chain=Xterio, profile=profile)

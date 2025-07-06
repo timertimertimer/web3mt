@@ -16,7 +16,7 @@ class Coin:
         self.name = name
         if price:
             self.price = price
-        elif self.symbol in ['USDT', 'USDC']:
+        elif self.symbol in ['USDT', 'USDC', 'USD1']:
             self.price = Decimal("1")
 
     def __eq__(self, other):
@@ -36,6 +36,10 @@ class Coin:
     @classmethod
     def from_instance(cls, instance):
         return cls(**instance.__dict__)
+
+    @classmethod
+    def instances(cls):
+        return cls._instances
 
     async def update_price(self) -> Decimal:
         from web3mt.cex import OKX

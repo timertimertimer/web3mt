@@ -13,7 +13,7 @@ from web3mt.cex.okx.models import *
 from web3mt.config import DEV, env
 from web3mt.models import Coin
 from web3mt.onchain.aptos.models import TokenAmount
-from web3mt.utils import my_logger
+from web3mt.utils import logger
 
 __all__ = [
     'OKX'
@@ -68,34 +68,43 @@ class OKX(CEX):
         )
         secret_key_bytes = (
             self.profile.okx.api_secret if self.profile and self.profile.okx.api_secret
-            else env.OKX_API_SECRET
+            else env.okx_api_secret
         ).encode('utf-8')
         signature = hmac.new(secret_key_bytes, prehash_string.encode('utf-8'), sha256).digest()
         encoded_signature = base64.b64encode(signature).decode('utf-8')
         return {
             "Content-Type": "application/json",
             'OK-ACCESS-KEY': (
-                self.profile.okx.api_key if self.profile and self.profile.okx.api_key else env.OKX_API_KEY
+                self.profile.okx.api_key if self.profile and self.profile.okx.api_key else env.okx_api_key
             ),
             'OK-ACCESS-SIGN': encoded_signature,
             'OK-ACCESS-TIMESTAMP': timestamp,
             'OK-ACCESS-PASSPHRASE': (
                 self.profile.okx.api_passphrase if self.profile and self.profile.okx.api_passphrase
-                else env.OKX_API_PASSPHRASE
+                else env.okx_api_passphrase
             )
         }
 
     async def get_coin_price(self, coin: str | Coin = 'ETH') -> Decimal:
-        if coin.price:
-            return coin.price
-        coin = Coin(coin) if isinstance(coin, str) else coin
-        _, data = await self.get('market/ticker', params={'instId': f'{coin.symbol}-USDT'}, without_headers=True)
-        if data['data']:
-            coin.price = data['data'][0]['askPx']
-            return coin.price
+        if isinstance(coin, Coin):
+            if coin.price:
+                return coin.price
         else:
-            my_logger.warning(f'{self.log_info} | {data["msg"]}. {coin.symbol}-USDT')
-            return Decimal("0")
+            coin = Coin(coin)
+        usd_tickers = ['USDT', 'USDC']
+        for usd_ticker in usd_tickers:
+            _, data = await self.get('market/ticker', params={'instId': f'{coin.symbol}-{usd_ticker}'}, without_headers=True)
+            if data.get('data'):
+                coin.price = data['data'][0]['askPx']
+                return coin.price
+            elif "Instrument ID or Spread ID doesn't exist" in data['msg']:
+                logger.info(
+                    f"{self} | {data['msg']}. {coin.symbol}-{usd_ticker}"
+                )
+            else:
+                logger.warning(f"{self} | {data['msg']}. {coin.symbol}-{usd_ticker}")
+                return Decimal("0")
+        return Decimal(0)
 
     async def get_funding_balance(self, user: User = None, coins: list[Asset | Coin | str] = None) -> list[Asset]:
         """
@@ -117,7 +126,7 @@ class OKX(CEX):
             for currency in data['data']
         ]
         if DEV:
-            my_logger.info(user.funding_account)
+            logger.info(user.funding_account)
         return user.funding_account.assets
 
     async def get_trading_balance(self, user: User = None, coins: list[Asset | Coin | str] = None) -> list[Asset]:
@@ -141,7 +150,7 @@ class OKX(CEX):
             for currency in data['details']
         ]
         if DEV:
-            my_logger.info(user.trading_account)
+            logger.info(user.trading_account)
         return user.trading_account.assets
 
     async def get_earn_balance(self, coins: list[Asset | Coin | str] = None) -> list[Asset]:
@@ -157,12 +166,12 @@ class OKX(CEX):
                 Coin(currency['ccy']), available_balance=0, frozen_balance=balance, total=balance
             ))
         if DEV:
-            my_logger.info(user.trading_account)
+            logger.info(user.trading_account)
         return user.funding_account.assets
 
     async def get_sub_account_list(self) -> list[User]:
         _, data = await self.get('users/subaccount/list')
-        return [User(self, sub_account['subAcct']) for sub_account in data['data']]
+        return [User(self, sub_account['subAcct']) for sub_balance_ofaccount in data['data']]
 
     async def transfer(
             self,
@@ -192,9 +201,9 @@ class OKX(CEX):
         _, data = await self.post(f'asset{between_sub_accounts}/transfer', data=str(data))
         log = f'{asset} {self._define_path_for_log(from_account, to_account, type_)}'
         if not data['msg']:
-            my_logger.debug(f'{self.log_info} | Transferred {log}')
+            logger.debug(f'{self.log_info} | Transferred {log}')
         else:
-            my_logger.warning(f'{self.log_info} | Couldn\'t transfer {log}. {data}')
+            logger.warning(f'{self.log_info} | Couldn\'t transfer {log}. {data}')
 
     async def withdraw(
             self,
@@ -212,7 +221,7 @@ class OKX(CEX):
             await self.get_funding_balance()
         asset_to_withdraw: Asset = self.main_user.funding_account[coin] or Asset(coin, 0, 0, 0)
         if asset_to_withdraw < token_amount:
-            my_logger.warning(f'{self.log_info} | Not enough balance on OKX. {token_amount} > {asset_to_withdraw}')
+            logger.warning(f'{self.log_info} | Not enough balance on OKX. {token_amount} > {asset_to_withdraw}')
             return
         wis: list[WithdrawInfo] = await self.get_withdrawal_info(asset_to_withdraw.coin, internal)
         if chain == 'Ethereum':
@@ -222,30 +231,30 @@ class OKX(CEX):
         for wi in wis:
             if wi.internal == internal and wi.chain == chain:
                 if not wi.minimum_withdrawal <= amount <= wi.maximum_withdrawal:
-                    my_logger.warning(
+                    logger.warning(
                         f'{self.log_info} | {chain} | Withdraw of {token_amount} does not meet the range of minimum - '
                         f'{wi.minimum_withdrawal} and maximum - {wi.maximum_withdrawal} withdrawals'
                     )
                     return
                 fee_in_usd = wi.fee * wi.coin.price
                 if fee_in_usd > max_fee_in_usd:
-                    my_logger.warning(
+                    logger.warning(
                         f'{self.log_info} | {chain} | Withdraw of {token_amount} takes too much fee - {fee_in_usd:.2f}$'
                     )
                     return
-                my_logger.info(f'{self.log_info} | Trying to withdraw {token_amount} to {address}. {wi}')
+                logger.info(f'{self.log_info} | Trying to withdraw {token_amount} to {address}. {wi}')
                 data = dict(
                     ccy=coin.symbol, amt=str(amount), dest=3 if internal else 4, toAddr=address, fee=str(wi.fee),
                     chain=f'{coin.symbol}-{chain}'
                 )
                 _, data = await self.post('asset/withdrawal', data=str(data))
                 if not data['msg']:
-                    my_logger.debug(f'{self.log_info} | Withdrawal ID - {data["data"][0]["wdId"]}')
+                    logger.debug(f'{self.log_info} | Withdrawal ID - {data["data"][0]["wdId"]}')
                 else:
-                    my_logger.warning(f'{self.log_info} | {address} ({chain}) | {data}')
+                    logger.warning(f'{self.log_info} | {address} ({chain}) | {data}')
                     return
                 return fee_in_usd
-        my_logger.warning(
+        logger.warning(
             f'{self.log_info} | Can\'t withdraw {token_amount}' +
             (f' to {token_amount.token.chain}' if not internal else '')
         )
@@ -287,16 +296,16 @@ class OKX(CEX):
         async def __aexit__(self, exc_type, exc_val, exc_tb):
             if exc_type:
                 if isinstance(exc_val, asyncio.CancelledError):
-                    my_logger.debug(f'Connection was cancelled | {datetime.now().isoformat()}')
+                    logger.debug(f'Connection was cancelled | {datetime.now().isoformat()}')
                 else:
-                    my_logger.error(f"Exception in context: {exc_type}, {exc_val}")
+                    logger.error(f"Exception in context: {exc_type}, {exc_val}")
             if self.ws:
                 await self.ws.__aexit__(exc_type, exc_val, exc_tb)
 
         @staticmethod
         def sign() -> dict:
             ts = str(int(datetime.now().timestamp()))
-            args = dict(apiKey=OKXAPICreds.KEY, passphrase=OKXAPICreds.PASSPHRASE, timestamp=ts)
+            args = dict(apiKey=OKXAPICreds.KEY, passphrase=OKXAPICreds.passphrase, timestamp=ts)
             sign = ts + 'GET' + '/users/self/verify'
             mac = hmac.new(
                 bytes(OKXAPICreds.SECRET, encoding='utf8'),
@@ -314,11 +323,11 @@ class OKX(CEX):
         async def start(self):
             async for ws in self.ws:
                 try:
-                    my_logger.debug(f'Connected to {self.URL} {datetime.now().isoformat()}')
+                    logger.debug(f'Connected to {self.URL} {datetime.now().isoformat()}')
                     await self.send(ws, 'login', [self.sign()])
                     async for msg_string in ws:
                         await self.handle_message(ws, msg_string)
-                    my_logger.debug("Connection finished" + datetime.now().isoformat())
+                    logger.debug("Connection finished" + datetime.now().isoformat())
                 except (websockets.ConnectionClosed, websockets.ConnectionClosedError):
                     await asyncio.sleep(5)
                     continue
@@ -329,11 +338,11 @@ class OKX(CEX):
                 event = m.get('event')
                 data = m.get('data')
                 if event == 'error':
-                    my_logger.warning("Error ", msg_string)
+                    logger.warning("Error ", msg_string)
                 elif event in ['subscribe', 'unsubscribe']:
-                    my_logger.debug("subscribe/unsubscribe ", msg_string)
+                    logger.debug("subscribe/unsubscribe ", msg_string)
                 elif event == 'login':
-                    my_logger.debug('Logged in')
+                    logger.debug('Logged in')
                     await self.send(ws, 'subscribe', [dict(channel='deposit-info')])
                 elif data:
                     data = data[0]
@@ -343,15 +352,15 @@ class OKX(CEX):
                     sub_name = data.get('subAcct')
                     match state:
                         case 0 | 1:
-                            my_logger.info(data)
+                            logger.info(data)
                             if sub_name:
                                 await self.transfer_from_sub(sub_name, asset, amount)
                         case 2:
-                            my_logger.success(f'{amount} {asset} deposit to {f"{sub_name} sub" or "master"} completed')
+                            logger.success(f'{amount} {asset} deposit to {f"{sub_name} sub" or "master"} completed')
                         case _:
-                            my_logger.warning(data)
+                            logger.warning(data)
             except Exception as e:
-                my_logger.warning(e)
+                logger.warning(e)
 
         async def transfer_from_sub(self, sub_name: str, asset: str, amount: str) -> None:
             loop = asyncio.get_event_loop()

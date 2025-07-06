@@ -6,7 +6,7 @@ from dotenv import load_dotenv
 
 from web3mt.onchain.evm.client import ProfileClient
 from web3mt.onchain.evm.models import Token
-from web3mt.utils import ProfileSession, my_logger, set_windows_event_loop_policy, FileManager
+from web3mt.utils import Profilecurl_cffiAsyncSession, logger, set_windows_event_loop_policy, FileManager
 
 load_dotenv()
 set_windows_event_loop_policy()
@@ -27,7 +27,7 @@ async def claim(profile: Profile):
         address=client.w3.to_checksum_address('0x9234f83473C03be04358afC3497d6293B2203288'),
         abi=abi
     )
-    async with ProfileSession(profile, headers=headers, sleep_echo=False) as session:
+    async with Profilecurl_cffiAsyncSession(profile, headers=headers, sleep_echo=False) as session:
         response, data = await session.get(
             url=f'https://pub-88646eee386a4ddb840cfb05e7a8d8a5.r2.dev/eth_data/{profile.evm_address[2:5].lower()}.json',
             headers=headers,
@@ -44,7 +44,7 @@ async def claim(profile: Profile):
             index = data['index']
             merkle_proof = data['proof']
             if await contract.functions.isClaimed(index).call():
-                my_logger.success(f'{profile.id} | {address} | Already claimed {int(amount / 1.e18)} ZK')
+                logger.success(f'{profile.id} | {address} | Already claimed {int(amount / 1.e18)} ZK')
                 return int(amount / 1.e18)
             await client.tx(
                 to=contract.address,
