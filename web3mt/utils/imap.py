@@ -84,7 +84,7 @@ class IMAPClient(IMAP4_SSL):
         await self.logout()
 
     async def _update_access_token(self):
-        raise NotImplementedError
+        raise NotImplementedError("Must be implemented by subclasses")
 
     async def _get_messages_from_folders(self, folders: Iterable[str], limit: int = 10) -> dict[str: list[Message]]:
         messages = defaultdict(list)

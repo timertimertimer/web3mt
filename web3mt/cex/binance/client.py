@@ -5,8 +5,9 @@ from decimal import Decimal
 from typing import Optional
 from urllib.parse import urlencode
 
-from web3mt.cex import Account
+from web3mt.cex import Account, Trading
 from web3mt.cex.base import CEX, ProfileCEX
+from web3mt.cex.binance.models import Funding
 from web3mt.cex.models import Asset, User
 from web3mt.config import DEV, cex_env
 from web3mt.models import Coin
@@ -15,7 +16,7 @@ from web3mt.utils import logger
 
 class Binance(CEX):
     API_VERSION = 3
-    MAIN_ENDPOINT = "https://api.binance.com"
+    URL = "https://api.binance.com"
     NAME = "Binance"
 
     async def make_request(
@@ -149,7 +150,7 @@ class Binance(CEX):
         elif from_account.ACCOUNT_ID == "FUNDING" and to_account.ACCOUNT_ID == "SPOT":
             type_ = "FUNDING_MAIN"
         else:
-            raise NotImplementedError
+            raise NotImplementedError  # TODO
         _, data = await self.post(
             "/sapi/v1/asset/transfer",
             params=dict(
@@ -160,7 +161,11 @@ class Binance(CEX):
                 ),  # TODO: test on total/available/freeze
             ),
         )
-        return data["tranId"]
+        if not (transfer_id := data.get("tranId")):
+            logger.warning(
+                f"Could not transfer asset from {from_account.NAME} to {to_account.NAME}. Error: {data.get('msg') or data}"
+            )
+        return transfer_id
 
     async def transfer_from_trading_to_funding(
         self, user: User, asset: Asset, amount: Optional[Decimal] = None
@@ -187,17 +192,74 @@ class Binance(CEX):
         return await self.transfer_from_funding_to_trading(user, asset, amount)
 
     async def withdraw(
-        self, coin: Coin, account: Account, chain_name: str, to: str, amount: Decimal
+        self,
+        coin: Coin,
+        to: str,
+        amount: Decimal,
+        chain_name: str,
+        from_account: type[Funding, Trading] = None,
+        update_balance: bool = True,
     ):
-        # get total balance
-        # transfer from spot to funding or vica versa
-        # check if amount <= balance
-        # withdraw
-        # update balances
+        # TODO: get commissions and withdrawable status
+        if not from_account:
+            user = self.main_user
+        else:
+            user = from_account.user
+        if update_balance:
+            await self.update_balances(user)
+        if not from_account:
+            trading_account_asset = user.trading_account.get(coin)
+            funding_account_asset = user.funding_account.get(coin)
+            total_available_balance = (
+                trading_account_asset.available_balance
+                if trading_account_asset
+                else 0 + funding_account_asset.available_balance
+                if funding_account_asset
+                else 0
+            )
+            if (
+                trading_account_asset
+                and trading_account_asset.available_balance > amount
+            ):
+                from_account = user.trading_account
+            elif (
+                funding_account_asset
+                and funding_account_asset.available_balance > amount
+            ):
+                from_account = user.funding_account
+            elif total_available_balance > amount:
+                transfer_id = await self.transfer_from_trading_to_funding(user, trading_account_asset)
+                if not transfer_id:
+                    return None
+                from_account = user.trading_account
+            else:
+                logger.warning(
+                    f"Not enough balance to withdraw {coin}. Total available: {total_available_balance}. Funding: {user.funding_account.assets[coin].available_balance}, Spot: {user.funding_account.assets[coin].available_balance}"
+                )
+                return None
         _, data = await self.post(
-            url=f"{self.MAIN_ENDPOINT}/sapi/v1/capital/withdraw/apply",
-            json=dict(coin=coin.symbol),
+            url=f"sapi/v1/capital/withdraw/apply",
+            params=dict(
+                coin=coin.symbol,
+                network=chain_name,
+                address=to,
+                amount=str(amount),
+                walletType={"Spot": 0, "Funding": 1}.get(from_account.NAME),
+            ),
         )
+        if not (withdraw_id := data.get("id")):
+            logger.warning(f'{self} | Could not withdraw {coin} to {to}. Error: {data.get('msg') or data}')
+        else:
+            logger.success(f"{self} | Withdrew {amount} {coin} to {to}")
+            if update_balance:
+                await self.update_balances(user)
+            else:
+                from_account[coin].available_balance -= amount
+        return withdraw_id
+
+    async def get_all_supported_coins_info(self):
+        _, data = await self.get('sapi/v1/capital/config/getall')
+        return data
 
 
 class ProfileBinance(ProfileCEX, Binance):

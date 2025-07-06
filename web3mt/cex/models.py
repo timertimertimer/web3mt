@@ -51,6 +51,39 @@ class Asset:
     def __bool__(self):
         return bool(self.total)
 
+    def __add__(self, other):
+        if other == 0:
+            return self
+        if isinstance(other, Asset) and self.coin == other.coin:
+            return Asset(
+                coin=other.coin,
+                available_balance=self.available_balance + other.available_balance,
+                frozen_balance=self.frozen_balance + other.frozen_balance,
+                total=self.total + other.total,
+            )
+        raise TypeError(f"Cannot add {other} to {repr(self)}")
+
+    def __radd__(self, other):
+        if other == 0:
+            return self
+        if not isinstance(other, (Asset, Decimal)):
+            raise TypeError(f"Cannot add {other} to {repr(self)}")
+        if other == 0:
+            return self
+        return self.__add__(other)
+
+    def __sub__(self, other):
+        if other == 0:
+            return self
+        if isinstance(other, Asset) and self.coin == other.coin:
+            return Asset(
+                coin=other.coin,
+                available_balance=self.available_balance - other.available_balance,
+                frozen_balance=self.frozen_balance - other.frozen_balance,
+                total=self.total - other.total,
+            )
+        raise TypeError(f"Cannot add {other} to {repr(self)}")
+
     def format_total(self) -> str:
         return format_number(self.total)
 
@@ -70,6 +103,7 @@ class Account:
         for asset in self.assets:
             if coin == asset.coin:
                 return asset
+        raise KeyError(f"No asset with coin {coin} in {self!r}")
 
     def __iter__(self):
         return iter(self.assets)
@@ -81,6 +115,19 @@ class Account:
 
     def __repr__(self):
         return self.__str__()
+
+    def __contains__(self, item):
+        if not isinstance(item, Coin):
+            raise TypeError(
+                f"'in' expects a Coin instance, got {type(item).__name__!r}"
+            )
+        return any(asset.coin == item for asset in self.assets)
+
+    def get(self, coin: Coin, default: Asset | None = None) -> Asset | None:
+        try:
+            return self[coin]
+        except KeyError:
+            return default
 
     @property
     def balance(self) -> int | float | str | Decimal:

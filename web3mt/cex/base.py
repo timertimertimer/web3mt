@@ -18,14 +18,14 @@ __all__ = ["CEX", "ProfileCEX"]
 
 class CEX(httpxAsyncClient, ABC):
     API_VERSION = None
-    MAIN_ENDPOINT = None
+    URL = None
     NAME = ""
 
     def __init__(
         self, proxy: str = env.default_proxy, config: SessionConfig = None, **kwargs
     ):
         httpxAsyncClient.__init__(
-            self, base_url=self.MAIN_ENDPOINT, proxy=proxy, config=config, **kwargs
+            self, base_url=self.URL, proxy=proxy, config=config, **kwargs
         )
         self.main_user = User(self)
 
@@ -69,12 +69,15 @@ class CEX(httpxAsyncClient, ABC):
     async def transfer(self, from_account: Account, to_account: Account, asset: Asset):
         pass
 
+    async def update_balances(self, user: User = None):
+        await self.get_funding_balance(user)
+        await self.get_trading_balance(user)
+
     async def get_total_balance(self):
         users = [self.main_user, *(await self.get_sub_account_list())]
         total_balance = 0
         for user in users:
-            await self.get_funding_balance(user)
-            await self.get_trading_balance(user)
+            await self.update_balances(user)
             total_balance += sum(
                 [
                     el.available_balance * await self.get_coin_price(el.coin)
@@ -102,9 +105,7 @@ class CEX(httpxAsyncClient, ABC):
 
     async def transfer_from_sub_accounts_to_master(self):
         async def process_sub_account(sub_user: User):
-            await self.get_funding_balance(sub_user)
-            await self.get_trading_balance(sub_user)
-
+            await self.update_balances(sub_user)
             await asyncio.gather(
                 *[
                     self.transfer(

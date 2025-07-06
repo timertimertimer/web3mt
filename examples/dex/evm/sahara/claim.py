@@ -1,6 +1,5 @@
 import asyncio
 import csv
-import json
 import sys
 from datetime import datetime, UTC, timedelta
 
@@ -87,6 +86,9 @@ Expiration Time: {expiration_time}"""
         return total_amount, eligible_amount
 
     async def claim(self):
+        total_amount, eligible_amount = await self.info()
+        if not eligible_amount:
+            return None
         resp, data = await self.http_session.post(
             "https://earndrop.prd.galaxy.eco/sahara/prepare_claim"
         )
@@ -116,15 +118,17 @@ Expiration Time: {expiration_time}"""
                         stage_index,
                         leaf_index,
                         self.evm_client.account.address,
-                        amount,
+                        token_amount.wei,
                         merkle_proof,
                     ],
                     signature
                 ],
             ),
+            value=TokenAmount(data['claim_fee'], is_wei=True, token=self.evm_client.chain.native_token),
         )
         if ok:
             logger.success(f"Claimed {token_amount}")
+        return None
 
 
 def get_eth_account(seed: str):
@@ -171,7 +175,7 @@ async def main(choice: int):
             f"Claimable: {TokenAmount(token=sahara_token, amount=sum([el[1] for el in res]), is_wei=True)}"
         )
     else:
-        await asyncio.gather(*[claim(seed, proxy) for seed, proxy in accounts[:1]])
+        await asyncio.gather(*[claim(seed, proxy) for seed, proxy in accounts])
 
 
 if __name__ == "__main__":

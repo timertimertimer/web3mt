@@ -438,7 +438,7 @@ class TokenAmount:
     def __radd__(self, other):
         if other == 0:
             return self
-        if not isinstance(other, (TokenAmount, int)):
+        if not isinstance(other, (TokenAmount, Decimal)):
             raise TypeError(f"Cannot add {other} to {repr(self)}")
         if other == 0:
             return self
@@ -660,7 +660,7 @@ opBNB.native_token.symbol = "BNB"
 
 BSC = Chain(
     name="BSC",
-    rpc="https://1rpc.io/bnb",
+    rpc="https://rpc.ankr.com/bsc/192d48a1a5b6c9408d2ef50d94e8fcc92902a511cf08e658473feca9f30650b9",
     chain_id=56,
     explorer="https://bscscan.com/",
     eip1559_tx=True,

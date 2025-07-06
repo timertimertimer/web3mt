@@ -116,7 +116,7 @@ class BaseAsyncSession(ABC):
         self,
         i: int,
         request_info: str,
-        response,
+        response: Optional,
         response_data,
         exception: type[Exception],
         retry_delay: tuple[int, int],
@@ -132,7 +132,7 @@ class BaseAsyncSession(ABC):
             body = kwargs.get("body") or kwargs.get("json")
             retry_delay = kwargs.pop("retry_delay", self.config.sleep_range)
             retry_count = kwargs.pop("retry_count", self.config.retry_count)
-            request_info = f"{method} {url} params={params_str or None} {body=}"
+            request_info = f'{method} {url} params="{params_str or None}" body="{body}"'
             if self.config.requests_echo:
                 logger.info(f"{self.config.log_info} | {request_info}")
             response_data = None
@@ -218,8 +218,8 @@ class curl_cffiAsyncSession(BaseAsyncSession, AsyncSession):
     ) -> None:
         BaseAsyncSession.__init__(self, **kwargs)
         impersonate = kwargs.pop("impersonate", BrowserType.chrome120)
-        kwargs.pop('config', None)
-        kwargs.pop('proxy')
+        kwargs.pop("config", None)
+        kwargs.pop("proxy")
         AsyncSession.__init__(
             self,
             proxy=self.proxy,
@@ -244,7 +244,13 @@ class curl_cffiAsyncSession(BaseAsyncSession, AsyncSession):
         self.proxies["all"] = self.proxy.as_url
 
     async def parse_exception(
-        self, i, request_info, response, response_data, exception: RequestsError, retry_delay
+        self,
+        i: int,
+        request_info: str,
+        response: Optional,
+        response_data,
+        exception: RequestsError,
+        retry_delay: tuple[float, float],
     ):
         response = response or exception.response
         s = f"{request_info=} {exception=}" + (
@@ -308,8 +314,8 @@ class httpxAsyncClient(BaseAsyncSession, AsyncClient):
         **kwargs,
     ) -> None:
         BaseAsyncSession.__init__(self, **kwargs)
-        kwargs.pop('config')
-        kwargs.pop('proxy')
+        kwargs.pop("config")
+        kwargs.pop("proxy")
         AsyncClient.__init__(
             self,
             proxy=self.proxy,
@@ -318,9 +324,15 @@ class httpxAsyncClient(BaseAsyncSession, AsyncClient):
         )
 
     async def parse_exception(
-        self, i, request_info, response, response_data, exception, retry_delay
+        self,
+        i,
+        request_info: str,
+        response: Optional,
+        response_data,
+        exception,
+        retry_delay,
     ):
-        raise NotImplementedError
+        raise NotImplementedError  # TODO
 
     @BaseAsyncSession.retry_request
     async def make_request(
