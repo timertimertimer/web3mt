@@ -49,6 +49,7 @@ dev = [
     "openai>=1.66.5,<2",
     "pandas>=2.2.3,<3",
     "ruff>=0.12.1",
+    "monero>=1.1.1",
 ]
 
 [tool.uv.sources]

@@ -1,7 +1,11 @@
 import asyncio
 
 from web3mt.config import btc_env
-from web3mt.onchain.btc.client import Client, LitecoinSpace
+from web3mt.onchain.btc.client import (
+    Client,
+    LitecoinSpace,
+    native_segwit_derivation_path,
+)
 
 from bitcoinlib.wallets import Wallet, wallet_delete_if_exists
 from bitcoinlib.keys import HDKey
@@ -43,26 +47,22 @@ async def sign_tx(to_address: str, amount: BTCLikeAmount):
     return tx.as_hex()
 
 
-def some():
-    wallet_delete_if_exists("temp_wallet", force=True)
-    wallet = Wallet.create(
-        "temp_wallet",
-        keys=btc_env.litecoin_mnemonic,
-        network=network,
-        witness_type="segwit",
-    )
-    for i in range(5):
-        key = wallet.get_key(change=1, account_id=i)
-        print(f"Change address #{i}: {key.address}")
-
+async def some():
+    amount = BTCLikeAmount(0.025, token=Token(chain="litecoin"))
+    async with Client(rpc=btc_env.litecoin_rpc, network='litecoin', mnemonic=btc_env.litecoin_mnemonic) as client:
+        addresses = []
+        for i in range(1, 7):
+            addresses.append(client.master_key.subkey_for_path(native_segwit_derivation_path.format(i=i)).address())
+        await client.send_btc(custom_outputs=[Output(amount.sat, address, network=client.network) for address in addresses])
 
 async def main():
-    async with Client.from_config(url=btc_env.litecoin_rpc, auth=None) as client:
+    async with Client(rpc=btc_env.litecoin_rpc) as client:
         data = await sign_tx('ltc1q7qelkfpcua7ppkj58tgdk2ptlsdnkaqwjeq6pn')
         data = await client.send_raw_transaction(data)
         return data
 
 
+
 if __name__ == "__main__":
     # some()
-    asyncio.run(main())
+    asyncio.run(some())

@@ -219,7 +219,7 @@ class curl_cffiAsyncSession(BaseAsyncSession, AsyncSession):
         BaseAsyncSession.__init__(self, **kwargs)
         impersonate = kwargs.pop("impersonate", BrowserType.chrome120)
         kwargs.pop("config", None)
-        kwargs.pop("proxy")
+        kwargs.pop("proxy", None)
         AsyncSession.__init__(
             self,
             proxy=self.proxy,
