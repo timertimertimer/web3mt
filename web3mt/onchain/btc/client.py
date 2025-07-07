@@ -95,12 +95,15 @@ class Client(BitcoinRPC):
         return await self.getblockchaininfo()
 
     async def get_balance(
-        self, address_index: int = 0, echo: bool = DEV
+        self, address_index: Optional[int] = None, echo: bool = DEV
     ) -> tuple[BTCLikeAmount, list[dict]]:
-        hk = self.master_key.subkey_for_path(
-            path=native_segwit_derivation_path.format(i=address_index),
-            network=self.network,
-        )
+        if address_index:
+            hk = self.master_key.subkey_for_path(
+                path=native_segwit_derivation_path.format(i=address_index),
+                network=self.network,
+            )
+        else:
+            hk = self.hk
         utxos = await LitecoinSpace().get_utxo(hk.address())
         total = BTCLikeAmount(0, token=Token(chain=self.network))
         for u in utxos:
