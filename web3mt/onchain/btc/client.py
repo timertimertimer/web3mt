@@ -95,7 +95,7 @@ class Client(BitcoinRPC):
         return await self.getblockchaininfo()
 
     async def get_balance(
-        self, address_index: int = 0, echo: bool = DEV
+        self, address_index: int = None, echo: bool = DEV
     ) -> tuple[BTCLikeAmount, list[dict]]:
         if address_index:
             hk = self.master_key.subkey_for_path(
@@ -110,7 +110,7 @@ class Client(BitcoinRPC):
             total.sat += u["value"]
         if echo:
             logger.info(
-                f"{hk.address()}, index={address_index} ({self.network.capitalize()}) | Balance: {total}"
+                f"{hk.address()}, index={address_index or 0} ({self.network.capitalize()}) | Balance: {total}"
             )
         return total, utxos
 
