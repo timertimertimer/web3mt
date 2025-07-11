@@ -172,7 +172,7 @@ class Client(BitcoinRPC):
         use_full_balance: Optional[bool] = False,
     ):
         sign_hash = await self.sign_tx(
-            to=to, amount=amount, custom_outputs=custom_outputs, fee=fee
+            to=to, amount=amount, custom_outputs=custom_outputs, fee=fee, use_full_balance=use_full_balance
         )
         if not sign_hash:
             return None
