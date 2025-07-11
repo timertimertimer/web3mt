@@ -35,6 +35,8 @@ class ENV(BaseSettings):
 
     retry_count: int = 5
 
+    monero_host: Optional[str] = None
+
 
 class TronENV(BaseSettings):
     model_config = SettingsConfigDict(
