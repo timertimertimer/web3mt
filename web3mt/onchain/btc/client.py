@@ -120,16 +120,22 @@ class Client(BitcoinRPC):
         amount: Optional[BTCLikeAmount] = None,
         custom_outputs: Optional[list[Output]] = None,
         fee: Optional[BTCLikeAmount] = None,
+        use_full_balance: Optional[bool] = False,
     ):
         # FIXME: hardcode litecoin
         # FIXME: hardcode litecoin
         # FIXME: hardcode litecoin
+        fee = fee or BTCLikeAmount(0.0001, token=Token(chain=self.network))
+        balance, utxos = await self.get_balance()
+
         if custom_outputs:
             amount = BTCLikeAmount(
                 sum(output.value for output in custom_outputs), is_sat=True
             )
-        fee = fee or BTCLikeAmount(0.001, token=Token(chain=self.network))
-        balance, utxos = await self.get_balance()
+        elif use_full_balance:
+            amount = balance - fee
+        elif not amount:
+            raise ValueError("amount: BTCLikeAmount or custom_outputs: list[Output] or use_full_balance: bool is required")
         if balance < amount + fee:
             logger.warning(
                 f"{self} | Not enough balance to send transaction. Transfer amount={amount}, balance={balance}"
@@ -163,6 +169,7 @@ class Client(BitcoinRPC):
         amount: Optional[BTCLikeAmount] = None,
         custom_outputs: Optional[list[Output]] = None,
         fee: Optional[BTCLikeAmount] = None,
+        use_full_balance: Optional[bool] = False,
     ):
         sign_hash = await self.sign_tx(
             to=to, amount=amount, custom_outputs=custom_outputs, fee=fee
