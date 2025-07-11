@@ -178,7 +178,7 @@ class Client(BitcoinRPC):
             return None
         tx_hash = await self.send_raw_transaction(sign_hash)
         if to:
-            logger.debug(f"{self}) | Transfer {amount} to {to} sent. Tx: https://litecoinspace.org/tx/{tx_hash}")
+            logger.debug(f"{self} | Transfer {amount} to {to} sent. Tx: https://litecoinspace.org/tx/{tx_hash}")
         elif custom_outputs:
             logger.debug(
                 f"{self} | Transfer "
