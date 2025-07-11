@@ -110,7 +110,7 @@ class Client(BitcoinRPC):
             total.sat += u["value"]
         if echo:
             logger.info(
-                f"{hk.address()}, index={address_index or 0} ({self.network.capitalize()}) | Balance: {total}"
+                f"{hk.address()}, index={self.hk.child_index} ({self.network.capitalize()}) | Balance: {total}"
             )
         return total, utxos
 
@@ -178,12 +178,12 @@ class Client(BitcoinRPC):
             return None
         tx_hash = await self.send_raw_transaction(sign_hash)
         if to:
-            logger.info(f"{self}) | Transfer {amount} to {to} sent. Tx: {tx_hash}")
+            logger.debug(f"{self}) | Transfer {amount} to {to} sent. Tx: https://litecoinspace.org/tx/{tx_hash}")
         elif custom_outputs:
-            logger.info(
+            logger.debug(
                 f"{self} | Transfer "
                 f"{', '.join([f'{BTCLikeAmount(output.value, is_sat=True, token=Token(chain=self.network))} to {output._address}' for output in custom_outputs])}. "
-                f"Tx: {tx_hash}"
+                f"Tx: https://litecoinspace.org/tx/{tx_hash}"
             )
         return tx_hash
 

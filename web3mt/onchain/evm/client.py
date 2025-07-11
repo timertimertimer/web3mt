@@ -382,8 +382,9 @@ class BaseClient:
         else:
             tx_params.gas_price = await self.w3.eth.gas_price
         if value.token == self.chain.native_token and use_full_balance:
-            tx_params.value = await self.balance_of() - tx_params.fee - TokenAmount(0.0001,
-                                                                                    token=self.chain.native_token)
+            tx_params.value = (
+                    await self.balance_of() - tx_params.fee - TokenAmount(0.0001,token=self.chain.native_token)
+            )
         return tx_params
 
     async def tx_with_params(
