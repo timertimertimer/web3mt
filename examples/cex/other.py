@@ -5,8 +5,8 @@ from web3db import Profile
 from web3db.core import create_db_instance
 
 from examples.utils.other import data_path
-from web3mt.cex.binance.client import Binance, ProfileBinance
-from web3mt.cex.bybit.bybit import Bybit
+from web3mt.cex.binance.client import ProfileBinance
+from web3mt.cex.bybit.client import Bybit
 from web3mt.cex.okx.okx import OKX
 from web3mt.models import Coin
 from web3mt.onchain.evm.client import ProfileClient

@@ -1,6 +1,7 @@
 from _decimal import Decimal
-from aiohttp import ClientHttpProxyError, ClientResponseError
 from hexbytes import HexBytes
+
+from aiohttp import ClientHttpProxyError, ClientResponseError
 from web3 import AsyncWeb3, AsyncHTTPProvider
 from web3.eth import AsyncEth
 from web3.middleware import (
@@ -17,13 +18,17 @@ from eth_account.signers.local import LocalAccount
 from eth_utils import to_checksum_address, from_wei
 from web3db import Profile
 from web3db.utils import decrypt
+
 from web3mt.onchain.evm.models import *
 from web3mt.config import env, DEV
+from web3mt.onchain.evm.wallet import HDWallet
 from web3mt.utils import sleep, logger
 
-__all__ = [
-    'TransactionParameters', 'ProfileClient', 'ClientConfig', 'BaseClient'
-]
+__all__ = ["TransactionParameters", "ProfileClient", "ClientConfig", "BaseClient"]
+
+from web3mt.utils.seeds import (
+    get_address_from_mnemonic_bip44,
+)
 
 
 class TransactionParameters:
@@ -153,6 +158,7 @@ class BaseClient:
     def __init__(
             self,
             account: LocalAccount = None,
+            hdwallet: HDWallet = None,
             chain: Chain = Ethereum,
             proxy: str = env.default_proxy,
             config: ClientConfig = ClientConfig(),
@@ -278,8 +284,10 @@ class BaseClient:
 
     async def balance_of(
             self, contract: AsyncContract = None, token: Token = None, owner_address: str = None, echo: bool = False,
-            remove_zero_from_echo: bool = True
+            remove_zero_from_echo: bool = True, address_index: int = 0
     ) -> TokenAmount:
+        if address_index:
+            get_address_from_mnemonic_bip44()
         owner_address = owner_address or self.account.address
         token = token or self.chain.native_token
         if token != self.chain.native_token:

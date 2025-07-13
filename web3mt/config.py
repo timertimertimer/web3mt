@@ -35,7 +35,9 @@ class ENV(BaseSettings):
 
     retry_count: int = 5
 
-    monero_host: Optional[str] = None
+    monero_node_rpc_host: Optional[str] = None
+    monero_wallet_rpc_login: Optional[str] = None
+    monero_wallet_rpc_password: Optional[str] = None
 
 
 class TronENV(BaseSettings):
@@ -73,6 +75,9 @@ class CEXENV(BaseSettings):
 
     binance_api_key: Optional[str] = None
     binance_api_secret: Optional[str] = None
+
+    htx_api_key: Optional[str] = None
+    htx_api_secret: Optional[str] = None
 
 env = ENV()
 tron_env = TronENV()

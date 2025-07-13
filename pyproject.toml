@@ -23,6 +23,7 @@ dependencies = [
     "pydantic-settings>=2.9.1",
     "bip-utils>=2.9.3",
     "bitcoinrpc>=0.7.0",
+    "ruff>=0.12.1",
 ]
 
 [project.urls]
@@ -48,8 +49,8 @@ dev = [
     "apscheduler>=3.11.0,<4",
     "openai>=1.66.5,<2",
     "pandas>=2.2.3,<3",
-    "ruff>=0.12.1",
     "monero>=1.1.1",
+    "pre-commit>=4.2.0",
 ]
 
 [tool.uv.sources]

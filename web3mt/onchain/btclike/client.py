@@ -1,15 +1,15 @@
-import asyncio
-from typing import List, Optional, Union, Dict, Literal
+from typing import List, Optional, Union, Dict
 
 from bitcoinrpc.bitcoin_rpc import BitcoinRPC
 from bitcoinlib.keys import HDKey
 from bitcoinlib.transactions import Transaction, Output
 from httpx import AsyncClient
 
-from web3mt.utils import curl_cffiAsyncSession
+from web3mt.utils import httpxAsyncClient
 from web3mt.utils.logger import logger
 from web3mt.config import btc_env, DEV
-from web3mt.onchain.btc.models import BTCLikeAmount, Token
+from web3mt.onchain.btclike.models import Litecoin, Bitcoin
+from web3mt.models import TokenAmount, Chain
 
 
 class BitcoindRPCError(Exception):
@@ -18,29 +18,52 @@ class BitcoindRPCError(Exception):
         self.message = message
 
 
+class _Space(httpxAsyncClient):
+    def __init__(self, base_api_url: str):
+        super().__init__(base_url=base_api_url)
+
+    async def get_utxo(self, address: str) -> list[dict]:
+        resp, data = await self.get(f"address/{address}/utxo")
+        return data
+
+
+class LitecoinSpace(_Space):
+    def __init__(self):
+        super().__init__(Litecoin.explorer.rstrip("/") + "/api")
+
+
+class MempoolSpace(_Space):
+    def __init__(self):
+        super().__init__(Bitcoin.explorer.rstrip("/") + "/api")
+
+
 # m / purpose' / coin_type' / account' / change / address_index
 native_segwit_derivation_path = "m/84'/2'/0'/0/{i}"
+space_api_map = {
+    Bitcoin: MempoolSpace,
+    Litecoin: LitecoinSpace,
+}
 
 
-class Client(BitcoinRPC):
+class BaseClient(BitcoinRPC):
     def __init__(
         self,
         rpc: str = btc_env.bitcoin_public_rpc,
-        network: Literal["bitcoin", "litecoin"] = "bitcoin",
+        chain: Chain = Bitcoin,
         mnemonic: str = btc_env.bitcoin_mnemonic,
         derivation_path: str = native_segwit_derivation_path.format(i=0),
         **kwargs,
     ):
-        self.network = network
-        self.master_key = HDKey.from_passphrase(mnemonic, network=self.network)
+        self.chain = chain
+        self.master_key = HDKey.from_passphrase(mnemonic, network=self.chain.name)
         self.hk = self.master_key.subkey_for_path(
-            path=derivation_path, network=self.network
+            path=derivation_path, network=self.chain.name
         )
         client = kwargs.pop("client", AsyncClient(timeout=10))
         super().__init__(rpc, client=client, **kwargs)
 
     def __str__(self):
-        return f"{self.hk.address()} ({self.network.capitalize()})"
+        return f"{self.hk.address()} ({self.chain.name.capitalize()})"
 
     async def __aenter__(self):
         return self
@@ -96,55 +119,56 @@ class Client(BitcoinRPC):
 
     async def get_balance(
         self, address_index: int = None, echo: bool = DEV
-    ) -> tuple[BTCLikeAmount, list[dict]]:
+    ) -> tuple[TokenAmount, list[dict]]:
         if address_index:
             hk = self.master_key.subkey_for_path(
                 path=native_segwit_derivation_path.format(i=address_index),
-                network=self.network,
+                network=self.chain.name,
             )
         else:
             hk = self.hk
-        utxos = await LitecoinSpace().get_utxo(hk.address())
-        total = BTCLikeAmount(0, token=Token(chain=self.network))
+        utxos = await space_api_map[self.chain]().get_utxo(hk.address())
+        total = TokenAmount(token=self.chain.native_token, amount=0)
         for u in utxos:
-            total.sat += u["value"]
+            total.sats += u["value"]
         if echo:
             logger.info(
-                f"{hk.address()}, index={self.hk.child_index} ({self.network.capitalize()}) | Balance: {total}"
+                f"{hk.address()}, index={self.hk.child_index} ({self.chain.name.capitalize()}) | Balance: {total}"
             )
         return total, utxos
 
     async def sign_tx(
         self,
         to: Optional[str] = None,
-        amount: Optional[BTCLikeAmount] = None,
+        amount: Optional[TokenAmount] = None,
         custom_outputs: Optional[list[Output]] = None,
-        fee: Optional[BTCLikeAmount] = None,
+        fee: Optional[TokenAmount] = None,
         use_full_balance: Optional[bool] = False,
     ):
-        # FIXME: hardcode litecoin
-        # FIXME: hardcode litecoin
-        # FIXME: hardcode litecoin
-        fee = fee or BTCLikeAmount(0.0001, token=Token(chain=self.network))
+        fee = fee or TokenAmount(token=self.chain.native_token, amount=0.0001)
         balance, utxos = await self.get_balance()
 
         if custom_outputs:
-            amount = BTCLikeAmount(
-                sum(output.value for output in custom_outputs), is_sat=True
+            amount = TokenAmount(
+                token=self.chain.native_token,
+                amount=sum(output.value for output in custom_outputs),
+                is_sats=True,
             )
         elif use_full_balance:
             amount = balance - fee
         elif not amount:
-            raise ValueError("amount: BTCLikeAmount or custom_outputs: list[Output] or use_full_balance: bool is required")
+            raise ValueError(
+                "amount: BTCLikeAmount or custom_outputs: list[Output] or use_full_balance: bool is required"
+            )
         if balance < amount + fee:
             logger.warning(
                 f"{self} | Not enough balance to send transaction. Transfer amount={amount}, balance={balance}"
             )
             return None
-        change: BTCLikeAmount = balance - amount - fee
+        change: TokenAmount = balance - amount - fee
         tx = Transaction(
-            network=self.network,
-            outputs=[Output(amount.sat, to, network=self.network)]
+            network=self.chain.name,
+            outputs=[Output(amount.sat, to, network=self.chain.name)]
             if to
             else custom_outputs,
         )
@@ -158,40 +182,37 @@ class Client(BitcoinRPC):
             )
         if change > 0:
             tx.outputs.append(
-                Output(change.sat, self.hk.address(), network=self.network)
+                Output(change.sats, self.hk.address(), network=self.chain.name)
             )
         tx.sign()
         return tx.as_hex()
 
-    async def send_btc(
+    async def transfer(
         self,
         to: Optional[str] = None,
-        amount: Optional[BTCLikeAmount] = None,
+        amount: Optional[TokenAmount] = None,
         custom_outputs: Optional[list[Output]] = None,
-        fee: Optional[BTCLikeAmount] = None,
+        fee: Optional[TokenAmount] = None,
         use_full_balance: Optional[bool] = False,
     ):
         sign_hash = await self.sign_tx(
-            to=to, amount=amount, custom_outputs=custom_outputs, fee=fee, use_full_balance=use_full_balance
+            to=to,
+            amount=amount,
+            custom_outputs=custom_outputs,
+            fee=fee,
+            use_full_balance=use_full_balance,
         )
         if not sign_hash:
             return None
         tx_hash = await self.send_raw_transaction(sign_hash)
         if to:
-            logger.debug(f"{self} | Transfer {amount} to {to} sent. Tx: https://litecoinspace.org/tx/{tx_hash}")
+            logger.debug(
+                f"{self} | Transfer {amount} to {to} sent. Tx: {self.chain.explorer.rstrip('/')}/tx/{tx_hash}"
+            )
         elif custom_outputs:
             logger.debug(
                 f"{self} | Transfer "
-                f"{', '.join([f'{BTCLikeAmount(output.value, is_sat=True, token=Token(chain=self.network))} to {output._address}' for output in custom_outputs])}. "
-                f"Tx: https://litecoinspace.org/tx/{tx_hash}"
+                f"{', '.join([f'{TokenAmount(amount=output.value, is_sats=True, token=self.chain.native_token)} to {output._address}' for output in custom_outputs])}. "
+                f"Tx: {self.chain.explorer.rstrip('/')}/tx/{tx_hash}"
             )
         return tx_hash
-
-
-class LitecoinSpace(curl_cffiAsyncSession):
-    def __init__(self, base_api_url: str = "https://litecoinspace.org"):
-        super().__init__(base_url=base_api_url)
-
-    async def get_utxo(self, address: str) -> list[dict]:
-        resp, data = await self.get(f"api/address/{address}/utxo")
-        return data

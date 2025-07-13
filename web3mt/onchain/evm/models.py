@@ -15,7 +15,6 @@ __all__ = [
     "Token",
     "TokenAmount",
     "Chain",
-    "Contract",
     "Ethereum",
     "Arbitrum",
     "Optimism",
@@ -418,7 +417,7 @@ class TokenAmount:
 
         if isinstance(other, Asset):
             return self.token == other.coin
-        return self.token == other.token and self.wei == other.sat
+        return self.token == other.token and self.wei == other.sats
 
     def __gt__(self, other):
         if not isinstance(other, TokenAmount):
@@ -560,12 +559,6 @@ class Chain:
             if instance.name == name:
                 return instance
         raise ValueError(f"No instance found with name {name}")
-
-
-class Contract:
-    def __init__(self, chain: Chain, address: str):
-        self.chain = chain
-        self.address = to_checksum_address(address)
 
 
 Ethereum = Chain(

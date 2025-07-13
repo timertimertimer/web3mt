@@ -1,2 +1,2 @@
-from .bybit import *
+from .client import *
 from .models import *

@@ -40,7 +40,7 @@ class Asset:
             return self.total > other.ether
         if (
             not isinstance(other, (Asset, TokenAmount))
-            or self.coin.symbol != other.coin.symbol
+            or self.coin.symbol != other.token.symbol
         ):
             raise TypeError(f"Cannot compare {other} with {repr(self)}")
         return self.total > other.total
@@ -97,11 +97,13 @@ class Account:
 
     def __init__(self, user: "User", assets: list[Asset] = None) -> None:
         self.user = user
-        self.assets = assets or []
+        self.assets = assets or []  # FIXME: list -> dict
 
-    def __getitem__(self, coin: Coin) -> Asset | None:
+    def __getitem__(self, coin: Coin | str) -> Asset | None:
         for asset in self.assets:
-            if coin == asset.coin:
+            if isinstance(coin, Coin) and coin == asset.coin:
+                return asset
+            elif isinstance(coin, str) and coin == asset.symbol:
                 return asset
         raise KeyError(f"No asset with coin {coin} in {self!r}")
 
@@ -140,8 +142,14 @@ class Account:
 class User:
     def __init__(self, cex: "CEX", user_id: str = None):
         self.cex = cex
-        self.trading_account = account_factory(cex, "Trading")(self)
-        self.funding_account = account_factory(cex, "Funding")(self)
+        trading_account_class = account_factory(cex, "Trading")
+        funding_account_class = account_factory(cex, "Funding")
+        self.trading_account = (
+            trading_account_class(self) if trading_account_class else None
+        )
+        self.funding_account = (
+            funding_account_class(self) if funding_account_class else None
+        )
         self.user_id = user_id
 
     def __repr__(self):
@@ -155,6 +163,7 @@ def account_factory(cex: "CEX", account_type: str) -> type(Account):
         Funding as BinanceFunding,
         Spot as BinanceTrading,
     )
+    from web3mt.cex.htx.models import Spot as HTXSpot
 
     account_type = account_type.lower()
     match cex.NAME:
@@ -173,6 +182,11 @@ def account_factory(cex: "CEX", account_type: str) -> type(Account):
                 return BinanceTrading
             elif account_type == "funding":
                 return BinanceFunding
+        case "HTX":
+            if account_type == "trading":
+                return HTXSpot
+            elif account_type == "funding":
+                return None
     raise ValueError(f"Unknown account type {account_type} for CEX {cex.NAME}")
 
 
