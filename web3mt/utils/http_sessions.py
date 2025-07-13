@@ -314,8 +314,8 @@ class httpxAsyncClient(BaseAsyncSession, AsyncClient):
         **kwargs,
     ) -> None:
         BaseAsyncSession.__init__(self, **kwargs)
-        kwargs.pop("config")
-        kwargs.pop("proxy")
+        kwargs.pop("config", None)
+        kwargs.pop("proxy", None)
         AsyncClient.__init__(
             self,
             proxy=self.proxy,
