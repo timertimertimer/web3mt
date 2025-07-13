@@ -378,7 +378,7 @@ class BaseClient:
         to: str,
         name: str,
         data: str = None,
-        value: TokenAmount = TokenAmount(0),
+        value: TokenAmount = None,
         gas_limit: int = None,
         max_priority_fee_per_gas: int = None,
         max_fee_per_gas: int = None,
@@ -408,7 +408,7 @@ class BaseClient:
         to: str = None,
         data: str = None,
         gas_limit: int = None,
-        value: TokenAmount | int = TokenAmount(0),
+        value: TokenAmount | int = None,
         max_priority_fee_per_gas: int = None,
         max_fee_per_gas: int = None,
         use_full_balance: bool = False,
@@ -416,6 +416,7 @@ class BaseClient:
         **kwargs,
     ) -> TransactionParameters | tuple[bool, str]:
         nonce = kwargs.get("nonce", await self.nonce())
+        value = value or TokenAmount(0, token=self.chain.native_token)
         tx_params = tx_params or TransactionParameters(
             from_=self.account.address,
             to=to,

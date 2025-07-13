@@ -140,13 +140,9 @@ class BaseClient:
         node_port: int = 18081,
         wallet_host: str = "localhost",
         wallet_port: int = 18088,
-        wallet_login: Optional[str] = env.monero_wallet_rpc_login,
-        wallet_password: Optional[str] = env.monero_wallet_rpc_password,
     ):
         self.daemon = AsyncJSONRPCDaemon(node_host, node_port)
-        self.wallet = AsyncJSONRPCWallet(
-            wallet_host, wallet_port, wallet_login, wallet_password
-        )
+        self.wallet = AsyncJSONRPCWallet(wallet_host, wallet_port)
 
     async def __aenter__(self):
         return self
@@ -167,10 +163,10 @@ class BaseClient:
     async def collect_on_primary_account(self):
         accounts = await self.wallet.get_accounts()
         subaddress_accounts = accounts["subaddress_accounts"]
-        zero_address = subaddress_accounts[0]['base_address']
+        zero_address = subaddress_accounts[0]["base_address"]
         for account in subaddress_accounts[1:]:
             if account["unlocked_balance"] > 0:
                 tx = await self.wallet.sweep_all(
                     address=zero_address,
-                    account_index=account['account_index'],
+                    account_index=account["account_index"],
                 )

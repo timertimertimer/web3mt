@@ -36,8 +36,6 @@ class ENV(BaseSettings):
     retry_count: int = 5
 
     monero_node_rpc_host: Optional[str] = None
-    monero_wallet_rpc_login: Optional[str] = None
-    monero_wallet_rpc_password: Optional[str] = None
 
 
 class TronENV(BaseSettings):
