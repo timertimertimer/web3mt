@@ -56,7 +56,7 @@ class Binance(CEX):
         _, data = await self._session.get("/api/v3/time", without_headers=True)
         return int(data["serverTime"])
 
-    @CEX.get_coin_price_decorator
+    @CEX._get_coin_price_decorator
     async def get_coin_price(
         self, coin: str | Coin = "ETH", usd_ticker: str = "USDT"
     ) -> Decimal:
@@ -75,7 +75,7 @@ class Binance(CEX):
             logger.warning(f"{self} | {msg}. {coin.symbol}-{usd_ticker}")
         return Decimal(0)
 
-    @CEX.get_funding_balance_decorator
+    @CEX._get_funding_balance_decorator
     async def get_funding_balance(self, user: User = None) -> list[Asset]:
         _, data = await self._session.post(url="/sapi/v1/asset/get-funding-asset")
         user.funding_account.assets = [
@@ -98,7 +98,7 @@ class Binance(CEX):
         ]
         return user.funding_account.assets
 
-    @CEX.get_trading_balance_decorator
+    @CEX._get_trading_balance_decorator
     async def get_trading_balance(
         self, user: User = None, omit_zero_balances: bool = False
     ) -> list[Asset]:
@@ -158,7 +158,7 @@ class Binance(CEX):
             )
         return transfer_id
 
-    @CEX.withdraw_decorator
+    @CEX._withdraw_decorator
     async def withdraw(
         self,
         to: str,

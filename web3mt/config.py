@@ -79,6 +79,14 @@ class CEXENV(BaseSettings):
     htx_api_key: Optional[str] = None
     htx_api_secret: Optional[str] = None
 
+    kucoin_api_passphrase: Optional[str] = None
+    kucoin_api_key: Optional[str] = None
+    kucoin_api_secret: Optional[str] = None
+
+    mexc_api_key: Optional[str] = None
+    mexc_api_secret: Optional[str] = None
+
+
 env = ENV()
 tron_env = TronENV()
 btc_env = BTClikeENV()

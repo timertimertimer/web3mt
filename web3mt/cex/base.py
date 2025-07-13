@@ -14,7 +14,7 @@ from web3mt.utils.http_sessions import (
     httpxAsyncClient,
 )
 
-__all__ = ["CEX", "ProfileCEX"]
+__all__ = ["CEX", "ProfileCEX", "Account"]
 usd_tickers = ["USDT", "USDC"]
 
 
@@ -37,6 +37,7 @@ class CEX(ABC):
     def __repr__(self):
         return f"{self.NAME}"
 
+    @abstractmethod
     async def make_request(self, *args, **kwargs):
         pass
 
@@ -62,7 +63,13 @@ class CEX(ABC):
         return await self.make_request("OPTIONS", *a, **kw)
 
     @abstractmethod
-    async def get_coin_price(self, coin: str | Coin = "ETH") -> Decimal:
+    async def get_server_timestamp(self):
+        pass
+
+    @abstractmethod
+    async def get_coin_price(
+        self, coin: str | Coin = "ETH", usd_ticker: str = "USDT"
+    ) -> Optional[Decimal]:
         pass
 
     @abstractmethod
@@ -89,6 +96,20 @@ class CEX(ABC):
         asset: Asset,
         amount: Optional[Decimal] = None,
     ):
+        pass
+
+    @abstractmethod
+    async def withdraw(
+        self,
+        to: str,
+        amount: TokenAmount,
+        from_account: Optional[Account] = None,
+        update_balance: bool = True,
+    ):
+        pass
+
+    @abstractmethod
+    async def get_all_supported_coins_info(self, coin: Optional[Coin] = None):
         pass
 
     async def update_balances(self, user: User = None):
@@ -146,7 +167,7 @@ class CEX(ABC):
             ]
         )
 
-    def get_coin_price_decorator(func: Callable) -> Callable:
+    def _get_coin_price_decorator(func: Callable) -> Callable:
         async def wrapper(self, coin: str | Coin = "ETH"):
             if isinstance(coin, Coin):
                 if coin.price:
@@ -163,7 +184,7 @@ class CEX(ABC):
 
         return wrapper
 
-    def get_funding_balance_decorator(func: Callable) -> Callable:
+    def _get_funding_balance_decorator(func: Callable) -> Callable:
         async def wrapper(
             self, user: User = None, coins: list[Coin] = None
         ) -> list[Asset]:
@@ -175,25 +196,24 @@ class CEX(ABC):
 
         return wrapper
 
-    def get_trading_balance_decorator(func: Callable) -> Callable:
-        async def wrapper(
-            self, user: User = None
-        ) -> list[Asset]:
+    def _get_trading_balance_decorator(func: Callable) -> Callable:
+        async def wrapper(self, user: User = None) -> list[Asset]:
             user = user or self.main_user
             assets = await func(self, user)
             if DEV:
-                logger.info(user.funding_account)
+                logger.info(user.trading_account)
             return assets
 
         return wrapper
 
-    def withdraw_decorator(func: Callable) -> Callable:
+    def _withdraw_decorator(func: Callable) -> Callable:
         async def wrapper(
             self,
             to: str,
             amount: TokenAmount,
             from_account: Account = None,
             update_balance: bool = True,
+            **kwargs,
         ) -> Any:
             # TODO: get commissions and withdrawable status
             if not from_account:
@@ -203,8 +223,16 @@ class CEX(ABC):
             if update_balance:
                 await self.update_balances(user)
             if not from_account:
-                trading_account_asset = user.trading_account.get(amount.token)
-                funding_account_asset = user.funding_account.get(amount.token)
+                trading_account_asset = (
+                    user.trading_account.get(amount.token)
+                    if user.trading_account
+                    else None
+                )
+                funding_account_asset = (
+                    user.funding_account.get(amount.token)
+                    if user.funding_account
+                    else None
+                )
                 total_available_balance = (
                     trading_account_asset.available_balance
                     if trading_account_asset
@@ -214,15 +242,15 @@ class CEX(ABC):
                 )
                 if (
                     trading_account_asset
-                    and trading_account_asset.available_balance > amount
+                    and trading_account_asset.available_balance >= amount.converted
                 ):
                     from_account = user.trading_account
                 elif (
                     funding_account_asset
-                    and funding_account_asset.available_balance > amount
+                    and funding_account_asset.available_balance >= amount.converted
                 ):
                     from_account = user.funding_account
-                elif total_available_balance > amount:
+                elif total_available_balance >= amount.converted:
                     transfer_id = await self.transfer_from_trading_to_funding(
                         user, trading_account_asset
                     )
@@ -236,10 +264,12 @@ class CEX(ABC):
                     return None
 
             withdraw_id, error_message_or_data = await func(
-                to,
-                amount,
-                from_account,
-                update_balance,
+                self,
+                to=to,
+                amount=amount,
+                from_account=from_account,
+                update_balance=update_balance,
+                **kwargs,
             )
             if not withdraw_id:
                 logger.warning(
@@ -250,7 +280,7 @@ class CEX(ABC):
                 if update_balance:
                     await self.update_balances(user)
                 else:
-                    from_account[amount.token].available_balance -= amount
+                    from_account[amount.token].available_balance -= amount.converted
             return withdraw_id
 
         return wrapper

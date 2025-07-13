@@ -131,7 +131,7 @@ class Token(Coin):
         return f"Token(symbol={self.symbol}, decimals={self.decimals})"
 
     def __eq__(self, other):
-        if not isinstance(other, Token):
+        if not isinstance(other, Coin):
             return False
         return self.symbol == other.symbol and self.decimals == other.decimals
 
@@ -275,5 +275,5 @@ class TokenAmount:
         try:
             return int(Decimal(str(amount)) * 10**self.token.decimals)
         except InvalidOperation as e:
-            logger.error(f'Couldn\'t convert {amount} sat to converted: {e}')
+            logger.error(f"Couldn't convert {amount} sat to converted: {e}")
             raise e

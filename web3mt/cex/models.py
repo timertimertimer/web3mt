@@ -3,11 +3,11 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from web3mt.cex import CEX
-from web3mt.models import Coin
+from web3mt.models import Coin, Token
 from web3mt.onchain.evm.models import TokenAmount
 from web3mt.utils import format_number
 
-__all__ = ["Asset", "User", "Account", "WithdrawInfo"]
+__all__ = ["Asset", "User", "Account", "WithdrawInfo", "ChainNotExistsInLocalChains"]
 
 
 class Asset:
@@ -101,9 +101,11 @@ class Account:
 
     def __getitem__(self, coin: Coin | str) -> Asset | None:
         for asset in self.assets:
+            if isinstance(coin, Token) and coin.symbol == asset.coin.symbol:
+                return asset
             if isinstance(coin, Coin) and coin == asset.coin:
                 return asset
-            elif isinstance(coin, str) and coin == asset.symbol:
+            elif isinstance(coin, str) and coin == asset.coin.symbol:
                 return asset
         raise KeyError(f"No asset with coin {coin} in {self!r}")
 
@@ -164,30 +166,36 @@ def account_factory(cex: "CEX", account_type: str) -> type(Account):
         Spot as BinanceTrading,
     )
     from web3mt.cex.htx.models import Spot as HTXSpot
+    from web3mt.cex.kucoin.models import (
+        Funding as KucoinFunding,
+        Trading as KucoinTrading,
+    )
+    from web3mt.cex.mexc.models import Trading as MexcTrading
 
-    account_type = account_type.lower()
-    match cex.NAME:
-        case "OKX":
-            if account_type == "trading":
-                return OKXTrading
-            elif account_type == "funding":
-                return OKXFunding
-        case "Bybit":
-            if account_type == "trading":
-                return BybitTrading
-            elif account_type == "funding":
-                return BybitFunding
-        case "Binance":
-            if account_type == "trading":
-                return BinanceTrading
-            elif account_type == "funding":
-                return BinanceFunding
-        case "HTX":
-            if account_type == "trading":
-                return HTXSpot
-            elif account_type == "funding":
-                return None
-    raise ValueError(f"Unknown account type {account_type} for CEX {cex.NAME}")
+    cex_accounts_mapping = {
+        "OKX": {
+            "trading": OKXTrading,
+            "funding": OKXFunding,
+        },
+        "Bybit": {
+            "trading": BybitTrading,
+            "funding": BybitFunding,
+        },
+        "Binance": {
+            "trading": BinanceTrading,
+            "funding": BinanceFunding,
+        },
+        "HTX": {
+            "trading": HTXSpot,
+            "funding": None,
+        },
+        "Kucoin": {
+            "trading": KucoinTrading,
+            "funding": KucoinFunding,
+        },
+        "MEXC": {"trading": MexcTrading, "funding": None},
+    }
+    return cex_accounts_mapping.get(cex.NAME, {}).get(account_type.lower())
 
 
 class WithdrawInfo:
@@ -220,3 +228,7 @@ class WithdrawInfo:
 
     def __str__(self):
         return self.__repr__()
+
+
+class ChainNotExistsInLocalChains(Exception):
+    pass

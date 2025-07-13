@@ -1,4 +1,3 @@
-import asyncio
 import base64
 import hashlib
 import hmac
@@ -10,8 +9,8 @@ from datetime import datetime, UTC
 from _decimal import Decimal
 
 from web3mt.cex.base import CEX
-from web3mt.cex.htx.models import chains, ChainNotExistsInLocalChains
-from web3mt.cex.models import User, Asset, Account
+from web3mt.cex.htx.models import chains
+from web3mt.cex.models import User, Asset, Account, ChainNotExistsInLocalChains
 from web3mt.config import cex_env, DEV
 from web3mt.models import Coin, TokenAmount
 from web3mt.utils import logger
@@ -26,18 +25,19 @@ class HTX(CEX):
         method: str,
         url: str,
         params: Optional[dict] = None,
-        json: Optional[dict] = None,
         api_key: str = cex_env.htx_api_key,
         api_secret: str = cex_env.htx_api_secret,
         without_headers: bool = False,
         **kwargs,
     ):
         if without_headers:
-            return await self._session.make_request(method, url, **kwargs)
+            return await self._session.make_request(
+                method, url, params=params, **kwargs
+            )
         current_timestamp = (
             int((await self.get_server_timestamp()) / 1000) or time.time()
         )
-        params = params or {} | {
+        params = (params or {}) | {
             "AccessKeyId": api_key,
             "SignatureMethod": "HmacSHA256",
             "SignatureVersion": "2",
@@ -45,9 +45,8 @@ class HTX(CEX):
                 "%Y-%m-%dT%H:%M:%S"
             ),
         }
-        data = json or {}
-        query_string = urlencode(params | data)
-        payload = f"{method}\n{self.URL.lstrip('https://')}\n{url}\n{query_string}"
+        params_string = urlencode(sorted(params.items()))
+        payload = f"{method}\n{self.URL.lstrip('https://')}\n{url}\n{params_string}"
         signature = base64.b64encode(
             hmac.new(api_secret.encode(), payload.encode(), hashlib.sha256).digest()
         ).decode()
@@ -55,7 +54,6 @@ class HTX(CEX):
             method,
             url,
             params=params | {"Signature": signature},
-            json=data or None,
             **kwargs,
         )
 
@@ -63,10 +61,10 @@ class HTX(CEX):
         _, data = await self.get("/v1/common/timestamp", without_headers=True)
         return int(data["data"])
 
-    @CEX.get_coin_price_decorator
+    @CEX._get_coin_price_decorator
     async def get_coin_price(
         self, coin: str | Coin = "ETH", usd_ticker: str = "USDT"
-    ) -> Decimal:
+    ) -> Optional[Decimal]:
         _, data = await self.get(
             "/market/detail/merged",
             params={"symbol": f"{coin.symbol.lower()}{usd_ticker.lower()}"},
@@ -78,23 +76,25 @@ class HTX(CEX):
             return Decimal(price)
         else:
             logger.warning(f"{self} | {data['msg']}. {coin.symbol}-{usd_ticker}")
-        return Decimal(0)
+        return None
 
     async def get_all_accounts(self):
         _, data = await self.get("/v1/account/accounts")
         if data["status"] != "ok":
-            logger.warning(f"{self} | Couldn'\t get all user accounts. {data['err-msg']}")
+            logger.warning(
+                f"{self} | Couldn't get all user accounts. {data['err-msg']}"
+            )
             return None
         return data["data"]
 
-    @CEX.get_funding_balance_decorator
+    @CEX._get_funding_balance_decorator
     async def get_funding_balance(
         self, user: User = None, coins: list[Coin] = None
     ) -> Optional[list[Asset]]:
         logger.warning(f"{self} | Exchange doesn't have Funding account")
         return None
 
-    @CEX.get_trading_balance_decorator
+    @CEX._get_trading_balance_decorator
     async def get_trading_balance(self, user: User = None) -> Optional[list[Asset]]:
         accounts = await self.get_all_accounts()
         main_spot = accounts[0]
@@ -104,24 +104,30 @@ class HTX(CEX):
             return None
         currencies = data["data"]["list"]
         for currency in currencies:
-            available = currency.get("available", 0)
-            frozen = currency.get("frozen", 0)
-            total = currency.get("balance", 0)
-            coin_symbol = currency['currency'].upper()
+            available = Decimal(currency.get("available", 0))
+            frozen = Decimal(currency.get("frozen", 0))
+            total = Decimal(currency.get("balance", 0))
+            coin_symbol = currency["currency"].upper()
             if total == 0:
                 continue
             existing_asset = user.trading_account.get(coin_symbol)
             if existing_asset:
-                existing_asset.available_balance = available or existing_asset.available_balance
+                existing_asset.available_balance = (
+                    available or existing_asset.available_balance
+                )
                 existing_asset.frozen_balance = frozen or existing_asset.frozen_balance
-                existing_asset.total = existing_asset.available_balance + existing_asset.frozen_balance
+                existing_asset.total = (
+                    existing_asset.available_balance + existing_asset.frozen_balance
+                )
             else:
-                user.trading_account.assets.append(Asset(
-                    coin=Coin(coin_symbol),
-                    available_balance=available,
-                    frozen_balance=frozen,
-                    total=total,
-                ))
+                user.trading_account.assets.append(
+                    Asset(
+                        coin=Coin(coin_symbol),
+                        available_balance=available,
+                        frozen_balance=frozen,
+                        total=total,
+                    )
+                )
         return user.trading_account.assets
 
     async def get_sub_account_list(self) -> list[User]:
@@ -136,25 +142,29 @@ class HTX(CEX):
     ):
         raise NotImplementedError
 
-    @CEX.withdraw_decorator
+    @CEX._withdraw_decorator
     async def withdraw(
         self,
         to: str,
         amount: TokenAmount,
-        from_account: Account = None,  # TODO
+        # fee: TokenAmount,
+        from_account: Optional[Account] = None,  # TODO
         update_balance: bool = True,
     ):
         chain = chains.get(amount.token.chain)
         if not chain:
-            logger.warning(f'{self} | {amount.token.chain} not in {self.NAME}')
-            raise ChainNotExistsInLocalChains(f'{self} | {amount.token.chain} not in {self.NAME}')
+            logger.warning(f"{self} | {amount.token.chain} not in {self.NAME}")
+            raise ChainNotExistsInLocalChains(
+                f"{self} | {amount.token.chain} not in {self.NAME}"
+            )
         _, data = await self.post(
             "/v1/dw/withdraw/api/create",
-            params=dict(
+            json=dict(
                 address=to,
-                currency=amount.token.symbol,
-                amount=amount.converted,
+                currency=amount.token.symbol.lower(),
+                amount=str(amount.converted),
                 chain=chain,
+                # fee=str(fee.converted)
             ),
         )
         return data.get("data"), data
@@ -167,7 +177,7 @@ class HTX(CEX):
             params={"currency": currency, "authorizedUser": authorized_user},
             without_headers=not authorized_user,
         )
-        if data.get('code') != 200:
-            logger.warning(f"{self} | Couldn\'t get all coins info. {data}")
+        if data.get("code") != 200:
+            logger.warning(f"{self} | Couldn't get all coins info. {data}")
             return None
         return data

@@ -127,12 +127,12 @@ class BaseAsyncSession(ABC):
         async def wrapper(self, *args, **kwargs) -> Any:
             method = kwargs.get("method") or args[0]
             url = kwargs.get("url") or args[1]
-            params = kwargs.get("params", {})
+            params = kwargs.get("params", {}) or {}
             params_str = urlencode(params)
-            body = kwargs.get("body") or kwargs.get("json")
+            body = kwargs.get("body", {}) or kwargs.get("json", {}) or {}
             retry_delay = kwargs.pop("retry_delay", self.config.sleep_range)
             retry_count = kwargs.pop("retry_count", self.config.retry_count)
-            request_info = f'{method} {url} params="{params_str or None}" body="{body}"'
+            request_info = f'{method} {url} params="{params_str}" body="{body}"'
             if self.config.requests_echo:
                 logger.info(f"{self.config.log_info} | {request_info}")
             response_data = None
@@ -414,5 +414,5 @@ async def test_ua_update():
         print(session.headers)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     asyncio.run(test_ua_update())
