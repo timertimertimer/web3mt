@@ -152,7 +152,7 @@ class TokenAmount:
         self.token = token
         if is_sats:
             self._sats: int = int(amount)
-            self._: Decimal = self._convert_sat_to_converted(amount)
+            self._converted: Decimal = self._convert_sat_to_converted(amount)
         else:
             self._sats: int = self._convert_converted_to_sat(amount)
             self._converted: Decimal = Decimal(str(amount))
