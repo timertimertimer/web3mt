@@ -55,9 +55,11 @@ class BaseClient(BitcoinRPC):
         **kwargs,
     ):
         self.chain = chain
-        self.master_key = HDKey.from_passphrase(mnemonic, network=self.chain.name)
+        self.master_key = HDKey.from_passphrase(
+            mnemonic, network=self.chain.name.lower()
+        )
         self.hk = self.master_key.subkey_for_path(
-            path=derivation_path, network=self.chain.name
+            path=derivation_path, network=self.chain.name.lower()
         )
         client = kwargs.pop("client", AsyncClient(timeout=10))
         super().__init__(rpc, client=client, **kwargs)
