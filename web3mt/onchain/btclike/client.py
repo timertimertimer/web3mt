@@ -125,7 +125,7 @@ class BaseClient(BitcoinRPC):
         if address_index:
             hk = self.master_key.subkey_for_path(
                 path=native_segwit_derivation_path.format(i=address_index),
-                network=self.chain.name,
+                network=self.chain.name.lower(),
             )
         else:
             hk = self.hk
@@ -169,8 +169,8 @@ class BaseClient(BitcoinRPC):
             return None
         change: TokenAmount = balance - amount - fee
         tx = Transaction(
-            network=self.chain.name,
-            outputs=[Output(amount.sat, to, network=self.chain.name)]
+            network=self.chain.name.lower(),
+            outputs=[Output(amount.sat, to, network=self.chain.name.lower())]
             if to
             else custom_outputs,
         )
@@ -184,7 +184,7 @@ class BaseClient(BitcoinRPC):
             )
         if change > 0:
             tx.outputs.append(
-                Output(change.sats, self.hk.address(), network=self.chain.name)
+                Output(change.sats, self.hk.address(), network=self.chain.name.lower())
             )
         tx.sign()
         return tx.as_hex()
