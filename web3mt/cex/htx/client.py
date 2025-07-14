@@ -11,25 +11,34 @@ from _decimal import Decimal
 from web3mt.cex.base import CEX
 from web3mt.cex.htx.models import chains
 from web3mt.cex.models import User, Asset, Account, ChainNotExistsInLocalChains
-from web3mt.config import cex_env, DEV
+from web3mt.config import cex_env, env
 from web3mt.models import Coin, TokenAmount
 from web3mt.utils import logger
 
 
 __all__ = ["HTX"]
 
+from web3mt.utils.http_sessions import SessionConfig
+
 
 class HTX(CEX):
     URL = "https://api.huobi.pro"
     NAME = "HTX"
+
+    def __init__(
+        self,
+        api_key: str = cex_env.htx_api_key,
+        api_secret: str = cex_env.htx_api_secret,
+        proxy: str = env.default_proxy,
+        config: SessionConfig = None,
+    ):
+        super().__init__(api_key, api_secret, proxy=proxy, config=config)
 
     async def make_request(
         self,
         method: str,
         url: str,
         params: Optional[dict] = None,
-        api_key: str = cex_env.htx_api_key,
-        api_secret: str = cex_env.htx_api_secret,
         without_headers: bool = False,
         **kwargs,
     ):
@@ -41,7 +50,7 @@ class HTX(CEX):
             int((await self.get_server_timestamp()) / 1000) or time.time()
         )
         params = (params or {}) | {
-            "AccessKeyId": api_key,
+            "AccessKeyId": self.api_key,
             "SignatureMethod": "HmacSHA256",
             "SignatureVersion": "2",
             "Timestamp": datetime.fromtimestamp(current_timestamp, UTC).strftime(
@@ -51,7 +60,9 @@ class HTX(CEX):
         params_string = urlencode(sorted(params.items()))
         payload = f"{method}\n{self.URL.lstrip('https://')}\n{url}\n{params_string}"
         signature = base64.b64encode(
-            hmac.new(api_secret.encode(), payload.encode(), hashlib.sha256).digest()
+            hmac.new(
+                self.api_secret.encode(), payload.encode(), hashlib.sha256
+            ).digest()
         ).decode()
         return await self._session.make_request(
             method,

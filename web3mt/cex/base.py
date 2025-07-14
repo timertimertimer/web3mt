@@ -25,10 +25,16 @@ class CEX(ABC):
 
     def __init__(
         self,
+        api_key: Optional[str] = None,
+        api_secret: Optional[str] = None,
+        api_passphrase: Optional[str] = None,
         proxy: str = env.default_proxy,
         config: SessionConfig = None,
         **session_kwargs,
     ):
+        self.api_key = api_key
+        self.api_secret = api_secret
+        self.api_passphrase = api_passphrase
         self._session = httpxAsyncClient(
             base_url=self.URL, proxy=proxy, config=config, **session_kwargs
         )
@@ -109,7 +115,7 @@ class CEX(ABC):
         pass
 
     @abstractmethod
-    async def get_all_supported_coins_info(self, coin: Optional[Coin] = None):
+    async def get_all_supported_coins_info(self):
         pass
 
     async def update_balances(self, user: User = None):

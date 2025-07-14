@@ -5,10 +5,9 @@ from decimal import Decimal
 from typing import Optional
 from urllib.parse import urlencode
 
-from web3mt.cex import Account
 from web3mt.cex.base import CEX, ProfileCEX
-from web3mt.cex.models import Asset, User
-from web3mt.config import cex_env
+from web3mt.cex.models import Asset, User, Account
+from web3mt.config import cex_env, env
 from web3mt.models import Coin
 from web3mt.onchain.evm.models import TokenAmount
 from web3mt.utils import logger
@@ -16,18 +15,27 @@ from web3mt.utils import logger
 
 __all__ = ["Binance", "ProfileBinance"]
 
+from web3mt.utils.http_sessions import SessionConfig
+
 
 class Binance(CEX):
     API_VERSION = 3
     URL = "https://api.binance.com"
     NAME = "Binance"
 
+    def __init__(
+        self,
+        api_key: str = cex_env.binance_api_key,
+        api_secret: str = cex_env.binance_api_secret,
+        proxy: str = env.default_proxy,
+        config: SessionConfig = None,
+    ):
+        super().__init__(api_key, api_secret, proxy=proxy, config=config)
+
     async def make_request(
         self,
         method: str,
         url: str,
-        api_key: str = cex_env.binance_api_key,
-        api_secret: str = cex_env.binance_api_secret,
         **kwargs,
     ):
         if kwargs.get("without_headers"):
@@ -39,7 +47,7 @@ class Binance(CEX):
         }
         data = kwargs.pop("json", {})
         signature = hmac.new(
-            api_secret.encode(),
+            self.api_secret.encode(),
             urlencode(params | data).encode(),
             hashlib.sha256,
         ).hexdigest()
@@ -48,7 +56,7 @@ class Binance(CEX):
             url,
             headers={
                 "Content-Type": "application/json",
-                "X-MBX-APIKEY": api_key,
+                "X-MBX-APIKEY": self.api_key,
             },
             params=params | {"signature": signature},
             json=data or None,

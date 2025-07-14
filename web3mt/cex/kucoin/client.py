@@ -11,17 +11,29 @@ from urllib.parse import urlencode
 from web3mt.cex import CEX, Account
 from web3mt.cex.kucoin.models import chains
 from web3mt.cex.models import Asset, User, ChainNotExistsInLocalChains
-from web3mt.config import cex_env
+from web3mt.config import cex_env, env
 from web3mt.models import Coin, TokenAmount
 from web3mt.utils import logger
 
 
 __all__ = ["Kucoin"]
 
+from web3mt.utils.http_sessions import SessionConfig
+
 
 class Kucoin(CEX):
     URL = "https://api.kucoin.com"
     NAME = "Kucoin"
+
+    def __init__(
+        self,
+        api_key: str = cex_env.kucoin_api_key,
+        api_secret: str = cex_env.kucoin_api_secret,
+        api_passphrase: str = cex_env.kucoin_api_passphrase,
+        proxy: str = env.default_proxy,
+        config: SessionConfig = None,
+    ):
+        super().__init__(api_key, api_secret, proxy=proxy, config=config)
 
     async def make_request(
         self,
@@ -29,9 +41,6 @@ class Kucoin(CEX):
         url: str,
         params: Optional[dict] = None,
         json: dict = None,
-        api_passphrase: Optional[str] = cex_env.kucoin_api_passphrase,
-        api_key: str = cex_env.kucoin_api_key,
-        api_secret: str = cex_env.kucoin_api_secret,
         without_headers: bool = False,
         **kwargs,
     ):
@@ -45,13 +54,13 @@ class Kucoin(CEX):
         payload = f"{str(current_timestamp)}{method}{url}{urlencode(params or {})}{json_lib.dumps(json) if json else ''}"
         signature = base64.b64encode(
             hmac.new(
-                api_secret.encode("utf-8"), payload.encode("utf-8"), hashlib.sha256
+                self.api_secret.encode("utf-8"), payload.encode("utf-8"), hashlib.sha256
             ).digest()
         )
         passphrase = base64.b64encode(
             hmac.new(
-                api_secret.encode("utf-8"),
-                api_passphrase.encode("utf-8"),
+                self.api_secret.encode("utf-8"),
+                self.api_passphrase.encode("utf-8"),
                 hashlib.sha256,
             ).digest()
         )
@@ -62,7 +71,7 @@ class Kucoin(CEX):
                 "Content-Type": "application/json",
                 "KC-API-SIGN": signature.decode("utf-8"),
                 "KC-API-TIMESTAMP": str(current_timestamp),
-                "KC-API-KEY": api_key,
+                "KC-API-KEY": self.api_key,
                 "KC-API-PASSPHRASE": passphrase.decode("utf-8"),
                 "KC-API-KEY-VERSION": "2",
             },

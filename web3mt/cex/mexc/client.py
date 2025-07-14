@@ -6,28 +6,37 @@ from typing import Optional
 from _decimal import Decimal
 from urllib.parse import urlencode
 
-from web3mt.cex import CEX, Account
+from web3mt.cex import CEX
 from web3mt.cex.mexc.models import chains
-from web3mt.cex.models import Asset, User, ChainNotExistsInLocalChains
-from web3mt.config import cex_env
+from web3mt.cex.models import Asset, User, ChainNotExistsInLocalChains, Account
+from web3mt.config import cex_env, env
 from web3mt.models import Coin, TokenAmount
 from web3mt.utils import logger
 
 
 __all__ = ["MEXC"]
 
+from web3mt.utils.http_sessions import SessionConfig
+
 
 class MEXC(CEX):
     URL = "https://api.mexc.com"
     NAME = "MEXC"
+
+    def __init__(
+        self,
+        api_key: str = cex_env.mexc_api_key,
+        api_secret: str = cex_env.mexc_api_secret,
+        proxy: str = env.default_proxy,
+        config: SessionConfig = None,
+    ):
+        super().__init__(api_key, api_secret, proxy=proxy, config=config)
 
     async def make_request(
         self,
         method: str,
         url: str,
         params: Optional[dict] = None,
-        api_key: str = cex_env.mexc_api_key,
-        api_secret: str = cex_env.mexc_api_secret,
         without_headers: bool = False,
         **kwargs,
     ):
@@ -40,14 +49,14 @@ class MEXC(CEX):
             "timestamp": current_timestamp,
         }
         signature = hmac.new(
-            api_secret.encode(),
+            self.api_secret.encode(),
             urlencode(params).encode(),
             hashlib.sha256,
         ).hexdigest()
         return await self._session.make_request(
             method,
             url,
-            headers={"Content-Type": "application/json", "X-MEXC-APIKEY": api_key},
+            headers={"Content-Type": "application/json", "X-MEXC-APIKEY": self.api_key},
             params=params | {"signature": signature},
             **kwargs,
         )
