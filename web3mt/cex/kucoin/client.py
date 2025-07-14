@@ -8,9 +8,9 @@ from typing import Optional, Literal
 from _decimal import Decimal
 from urllib.parse import urlencode
 
-from web3mt.cex import CEX, Account
+from web3mt.cex import CEX
 from web3mt.cex.kucoin.models import chains
-from web3mt.cex.models import Asset, User, ChainNotExistsInLocalChains
+from web3mt.cex.models import Asset, User, ChainNotExistsInLocalChains, Account
 from web3mt.config import cex_env, env
 from web3mt.models import Coin, TokenAmount
 from web3mt.utils import logger
