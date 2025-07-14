@@ -142,6 +142,8 @@ class AsyncJSONRPCWallet(AsyncSession):
         destinations: list[dict[int, str]],
         account_index: Optional[int] = None,
         subtract_fee_from_outputs: Optional[list[int]] = None,
+        get_tx_key: bool = False,
+        get_tx_metadata: bool = False,
     ):
         return await self.make_request(
             "transfer",
@@ -149,6 +151,8 @@ class AsyncJSONRPCWallet(AsyncSession):
                 "destinations": destinations,
                 "account_index": account_index,
                 "subtract_fee_from_outputs": subtract_fee_from_outputs,
+                "get_tx_key": get_tx_key,
+                "get_tx_metadata": get_tx_metadata,
             },
         )
 
@@ -180,7 +184,7 @@ class BaseClient:
         data = await self.wallet.transfer(
             destinations, account_index, subtract_fee_from_outputs
         )
-        logger.debug(f"Transfered {data}")
+        logger.debug(f"{self} | Transfered {data}")
         return data
 
     async def collect_on_primary_account(self):
