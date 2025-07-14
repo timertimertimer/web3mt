@@ -14,6 +14,9 @@ from web3mt.onchain.evm.models import TokenAmount
 from web3mt.utils import logger
 
 
+__all__ = ["Binance", "ProfileBinance"]
+
+
 class Binance(CEX):
     API_VERSION = 3
     URL = "https://api.binance.com"

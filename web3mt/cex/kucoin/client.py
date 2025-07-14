@@ -16,6 +16,9 @@ from web3mt.models import Coin, TokenAmount
 from web3mt.utils import logger
 
 
+__all__ = ["Kucoin"]
+
+
 class Kucoin(CEX):
     URL = "https://api.kucoin.com"
     NAME = "Kucoin"

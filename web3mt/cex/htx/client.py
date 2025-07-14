@@ -16,6 +16,9 @@ from web3mt.models import Coin, TokenAmount
 from web3mt.utils import logger
 
 
+__all__ = ["HTX"]
+
+
 class HTX(CEX):
     URL = "https://api.huobi.pro"
     NAME = "HTX"

@@ -14,6 +14,9 @@ from web3mt.models import Coin, TokenAmount
 from web3mt.utils import logger
 
 
+__all__ = ["MEXC"]
+
+
 class MEXC(CEX):
     URL = "https://api.mexc.com"
     NAME = "MEXC"
