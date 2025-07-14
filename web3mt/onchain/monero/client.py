@@ -103,6 +103,21 @@ class AsyncJSONRPCWallet(AsyncSession):
             params={"account_index": account_index, "address_index": address_index},
         )
 
+    async def get_balance(
+        self,
+        account_index: int = 0,
+        address_indices: Optional[list[int]] = None,
+        all_accounts: bool = False,
+    ):
+        return await self.make_request(
+            "get_balance",
+            params={
+                "account_index": account_index,
+                "address_indices": address_indices,
+                "all_accounts": all_accounts,
+            },
+        )
+
     async def sweep_all(
         self,
         address: str,

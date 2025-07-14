@@ -11,7 +11,7 @@ from concurrent.futures import ThreadPoolExecutor
 from decimal import Decimal
 from datetime import datetime, timezone
 from web3mt.cex.base import CEX, Asset
-from web3mt.cex.models import WithdrawInfo, User
+from web3mt.cex.models import WithdrawInfo, User, Account
 from web3mt.cex.okx.models import *
 from web3mt.config import DEV, env
 from web3mt.models import Coin

@@ -8,14 +8,22 @@ from web3mt.utils import logger
 
 client = BaseClient()
 
+
 async def versions():
     node_version = await client.daemon.get_version()
     wallet_version = await client.wallet.get_version()
     logger.info(f"Node version: {node_version}")
     logger.info(f"Wallet version: {wallet_version}")
 
+
 async def collect_on_primary_account():
     await client.collect_on_primary_account()
+
+
+async def balance():
+    data = await client.wallet.get_balance(all_accounts=True)
+    return data
+
 
 async def main():
     accounts = await client.wallet.get_accounts()
@@ -31,5 +39,6 @@ async def main():
     )
     return accounts
 
-if __name__ == '__main__':
-    asyncio.run(collect_on_primary_account())
+
+if __name__ == "__main__":
+    asyncio.run(balance())
