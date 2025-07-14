@@ -141,10 +141,15 @@ class AsyncJSONRPCWallet(AsyncSession):
         self,
         destinations: list[dict[int, str]],
         account_index: Optional[int] = None,
+        subtract_fee_from_outputs: Optional[list[int]] = None,
     ):
         return await self.make_request(
             "transfer",
-            params={"destinations": destinations, "account_index": account_index},
+            params={
+                "destinations": destinations,
+                "account_index": account_index,
+                "subtract_fee_from_outputs": subtract_fee_from_outputs,
+            },
         )
 
 
@@ -170,8 +175,11 @@ class BaseClient:
         self,
         destinations: list[dict[int, str]],
         account_index: Optional[int] = None,
+        subtract_fee_from_outputs: Optional[list[int]] = None,
     ):
-        data = await self.wallet.transfer(destinations, account_index)
+        data = await self.wallet.transfer(
+            destinations, account_index, subtract_fee_from_outputs
+        )
         logger.debug(f"Transfered {data}")
         return data
 
