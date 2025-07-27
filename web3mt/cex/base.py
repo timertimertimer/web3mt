@@ -184,8 +184,10 @@ class CEX(ABC):
             for usd_ticker in usd_tickers:
                 price = await func(self, coin=coin, usd_ticker=usd_ticker)
                 if price is not None:
+                    coin.price = price
                     return price
 
+            coin.price = Decimal("0")
             return Decimal("0")
 
         return wrapper

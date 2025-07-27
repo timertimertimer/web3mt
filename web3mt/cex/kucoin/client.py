@@ -33,7 +33,9 @@ class Kucoin(CEX):
         proxy: str = env.default_proxy,
         config: SessionConfig = None,
     ):
-        super().__init__(api_key, api_secret, proxy=proxy, config=config)
+        super().__init__(
+            api_key, api_secret, api_passphrase, proxy=proxy, config=config
+        )
 
     async def make_request(
         self,

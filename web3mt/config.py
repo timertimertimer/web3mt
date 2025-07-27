@@ -84,6 +84,10 @@ class CEXENV(BaseSettings):
     mexc_api_key: Optional[str] = None
     mexc_api_secret: Optional[str] = None
 
+    okx_api_key: Optional[str] = None
+    okx_api_secret: Optional[str] = None
+    okx_api_passphrase: Optional[str] = None
+
 
 env = ENV()
 tron_env = TronENV()

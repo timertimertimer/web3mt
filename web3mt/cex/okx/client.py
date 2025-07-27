@@ -5,6 +5,8 @@ import asyncio
 import base64
 import hmac
 import json
+from typing import Optional
+
 import websockets
 from hashlib import sha256
 from concurrent.futures import ThreadPoolExecutor
@@ -13,12 +15,44 @@ from datetime import datetime, timezone
 from web3mt.cex.base import CEX, Asset
 from web3mt.cex.models import WithdrawInfo, User, Account
 from web3mt.cex.okx.models import *
-from web3mt.config import DEV, env
+from web3mt.config import DEV, env, cex_env
 from web3mt.models import Coin
 from web3mt.onchain.aptos.models import TokenAmount
 from web3mt.utils import logger
 
 __all__ = ["OKX"]
+
+from web3mt.utils.http_sessions import SessionConfig
+
+
+def define_transfer_type(from_account: Account, to_account: Account) -> int:
+    if not from_account.user.user_id:  # from master
+        if not to_account.user.user_id:  # to master
+            return 0
+        else:  # to sub
+            return 1
+    else:  # from sub
+        if not to_account.user.user_id:  # to master
+            return 2
+        else:  # to sub
+            return 4
+
+
+def define_path_for_log(from_account: Account, to_account: Account, type_: int):
+    match type_:
+        case 0:
+            return f"from {from_account.NAME} to {to_account.NAME}"
+        case 1:
+            return f"from master ({from_account.NAME}) to sub {to_account.user.user_id} ({to_account.NAME})"
+        case 2:
+            return f"from sub {from_account.user.user_id} ({from_account.NAME}) to master ({to_account.NAME})"
+        case 4:
+            return (
+                f"from sub {from_account.user.user_id} ({from_account.NAME}) "
+                f"to sub {to_account.user.user_id} ({to_account.NAME})"
+            )
+        case _:
+            return ""
 
 
 class OKX(CEX):
@@ -26,39 +60,36 @@ class OKX(CEX):
     URL = f"https://www.okx.com/api/v{API_VERSION}"
     NAME = "OKX"
 
-    @staticmethod
-    def _define_transfer_type(from_account: Account, to_account: Account) -> int:
-        if not from_account.user.user_id:  # from master
-            if not to_account.user.user_id:  # to master
-                return 0
-            else:  # to sub
-                return 1
-        else:  # from sub
-            if not to_account.user.user_id:  # to master
-                return 2
-            else:  # to sub
-                return 4
+    def __init__(
+        self,
+        api_key: str = cex_env.okx_api_key,
+        api_secret: str = cex_env.okx_api_secret,
+        api_passphrase: str = cex_env.okx_api_passphrase,
+        proxy: str = env.default_proxy,
+        config: SessionConfig = None,
+    ):
+        super().__init__(
+            api_key, api_secret, api_passphrase, proxy=proxy, config=config
+        )
 
-    @staticmethod
-    def _define_path_for_log(from_account: Account, to_account: Account, type_: int):
-        match type_:
-            case 0:
-                return f"from {from_account.NAME} to {to_account.NAME}"
-            case 1:
-                return f"from master ({from_account.NAME}) to sub {to_account.user.user_id} ({to_account.NAME})"
-            case 2:
-                return f"from sub {from_account.user.user_id} ({from_account.NAME}) to master ({to_account.NAME})"
-            case 4:
-                return (
-                    f"from sub {from_account.user.user_id} ({from_account.NAME}) "
-                    f"to sub {to_account.user.user_id} ({to_account.NAME})"
-                )
-            case _:
-                return ""
-
-    def get_headers(self, path: str, method: str = "GET", **kwargs):
-        timestamp = (
-            datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
+    async def make_request(
+        self,
+        method: str,
+        url: str,
+        params: Optional[dict] = None,
+        json: dict = None,
+        without_headers: bool = False,
+        **kwargs,
+    ):
+        if without_headers:
+            return await self._session.make_request(
+                method, url, params=params, json=json, **kwargs
+            )
+        current_timestamp = int((await self.get_server_timestamp())) or datetime.now(
+            timezone.utc
+        )
+        current_timestamp_str = (
+            current_timestamp.strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
         )
         params = kwargs.get("params")
         params = (
@@ -67,60 +98,52 @@ class OKX(CEX):
             else ""
         )
         prehash_string = (
-            timestamp
+            current_timestamp_str
             + method.upper()
             + f"/api/v{OKX.API_VERSION}/"
-            + path
+            + url
             + params
             + str(kwargs.get("data", ""))
         )
-        secret_key_bytes = (
-            self.profile.okx.api_secret
-            if self.profile and self.profile.okx.api_secret
-            else env.okx_api_secret
-        ).encode("utf-8")
         signature = hmac.new(
-            secret_key_bytes, prehash_string.encode("utf-8"), sha256
+            self.api_secret.encode("utf-8"), prehash_string.encode("utf-8"), sha256
         ).digest()
         encoded_signature = base64.b64encode(signature).decode("utf-8")
-        return {
-            "Content-Type": "application/json",
-            "OK-ACCESS-KEY": (
-                self.profile.okx.api_key
-                if self.profile and self.profile.okx.api_key
-                else env.okx_api_key
-            ),
-            "OK-ACCESS-SIGN": encoded_signature,
-            "OK-ACCESS-TIMESTAMP": timestamp,
-            "OK-ACCESS-PASSPHRASE": (
-                self.profile.okx.api_passphrase
-                if self.profile and self.profile.okx.api_passphrase
-                else env.okx_api_passphrase
-            ),
-        }
+        return await self._session.make_request(
+            method,
+            url,
+            headers={
+                "Content-Type": "application/json",
+                "OK-ACCESS-KEY": self.api_key,
+                "OK-ACCESS-SIGN": encoded_signature,
+                "OK-ACCESS-TIMESTAMP": current_timestamp_str,
+                "OK-ACCESS-PASSPHRASE": self.api_passphrase,
+            },
+            params=params,
+            json=json,
+            **kwargs,
+        )
 
-    async def get_coin_price(self, coin: str | Coin = "ETH") -> Decimal:
-        if isinstance(coin, Coin):
-            if coin.price:
-                return coin.price
+    async def get_server_timestamp(self):
+        _, data = await self.get("/public/time", without_headers=True)
+        return int(data["ts"])
+
+    @CEX._get_coin_price_decorator
+    async def get_coin_price(
+        self, coin: str | Coin = "BTC", usd_ticker: str = "USDT"
+    ) -> Optional[Decimal]:
+        _, data = await self.get(
+            "/market/ticker",
+            params={"instId": f"{coin.symbol}-{usd_ticker}"},
+            without_headers=True,
+        )
+        if data := data.get("data"):
+            return data[0]["askPx"]
+        elif "Instrument ID or Spread ID doesn't exist" in data["msg"]:
+            logger.info(f"{self} | {data['msg']}. {coin.symbol}-{usd_ticker}")
         else:
-            coin = Coin(coin)
-        usd_tickers = ["USDT", "USDC"]
-        for usd_ticker in usd_tickers:
-            _, data = await self.get(
-                "market/ticker",
-                params={"instId": f"{coin.symbol}-{usd_ticker}"},
-                without_headers=True,
-            )
-            if data.get("data"):
-                coin.price = data["data"][0]["askPx"]
-                return coin.price
-            elif "Instrument ID or Spread ID doesn't exist" in data["msg"]:
-                logger.info(f"{self} | {data['msg']}. {coin.symbol}-{usd_ticker}")
-            else:
-                logger.warning(f"{self} | {data['msg']}. {coin.symbol}-{usd_ticker}")
-                return Decimal("0")
-        return Decimal(0)
+            logger.warning(f"{self} | {data['msg']}. {coin.symbol}-{usd_ticker}")
+        return None
 
     async def get_funding_balance(
         self, user: User = None, coins: list[Asset | Coin | str] = None
@@ -350,6 +373,8 @@ class OKX(CEX):
             for chain in data["data"]
             if chain["canWd"] or (internal and chain["canInternal"])
         ]
+
+    async def get_all_supported_coins_info(self): ...
 
     class Websocket:
         URL = "wss://ws.okx.com:8443/ws/v5/business"

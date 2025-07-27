@@ -328,8 +328,7 @@ class Token(Coin):
                 and any(
                     (
                         self.address == other.address,
-                        self.address
-                        in [self.native_token_address, self.burner_address]
+                        self.address in [self.native_token_address, self.burner_address]
                         and other.address
                         in [self.native_token_address, self.burner_address],
                     )
@@ -372,9 +371,7 @@ class Token(Coin):
     async def get_token_info(self) -> "Token":
         from web3mt.onchain.evm.client import BaseClient
 
-        return await BaseClient(chain=self.chain).get_onchain_token_info(
-            token=self
-        )
+        return await BaseClient(chain=self.chain).get_onchain_token_info(token=self)
 
 
 class TokenAmount:
@@ -402,11 +399,7 @@ class TokenAmount:
         return (
             f"TokenAmount(wei={self.wei}, ether={self.format_ether()}, symbol={self.token.symbol}, "
             f"chain={self.token.chain}"
-            + (
-                f", amount_in_usd={self.amount_in_usd}"
-                if self.amount_in_usd
-                else ""
-            )
+            + (f", amount_in_usd={self.amount_in_usd}" if self.amount_in_usd else "")
             + ")"
         )
 
@@ -484,18 +477,14 @@ class TokenAmount:
     def format_ether(self) -> str:
         return format_number(self._ether)
 
-    def _convert_wei_to_ether(
-        self, amount: int | float | str | Decimal
-    ) -> Decimal:
+    def _convert_wei_to_ether(self, amount: int | float | str | Decimal) -> Decimal:
         try:
             return Decimal(str(amount)) / 10**self.token.decimals
         except InvalidOperation as e:
             logger.error(f"Couldn't convert {amount} wei to ether: {e}")
             raise e
 
-    def _convert_ether_to_wei(
-        self, amount: int | float | str | Decimal
-    ) -> int:
+    def _convert_ether_to_wei(self, amount: int | float | str | Decimal) -> int:
         try:
             return int(Decimal(str(amount)) * 10**self.token.decimals)
         except InvalidOperation as e:
@@ -517,9 +506,7 @@ class Chain:
         native_token: "Token" = None,
     ):
         if chain_id in cls._instances:
-            raise ValueError(
-                f"Instance with chain_id {chain_id} already exists."
-            )
+            raise ValueError(f"Instance with chain_id {chain_id} already exists.")
         instance = super().__new__(cls)
         cls._instances[chain_id] = instance
         return instance
@@ -745,12 +732,8 @@ Ronin = Chain(
 Ronin.native_token.symbol = "RON"
 
 ETHEREUM_TOKENS = {
-    "USDT": Token(
-        Ethereum, address="0xdAC17F958D2ee523a2206206994597C13D831ec7"
-    ),
-    "USDC": Token(
-        Ethereum, address="0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48"
-    ),
+    "USDT": Token(Ethereum, address="0xdAC17F958D2ee523a2206206994597C13D831ec7"),
+    "USDC": Token(Ethereum, address="0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48"),
 }
 BASE_TOKENS = {
     "USDC": Token(Base, address="0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"),
@@ -758,12 +741,8 @@ BASE_TOKENS = {
 }
 SCROLL_TOKENS = {
     "SCR": Token(Scroll, address="0xd29687c813d741e2f938f4ac377128810e217b1b"),
-    "USDT": Token(
-        Scroll, address="0xf55BEC9cafDbE8730f096Aa55dad6D22d44099Df"
-    ),
-    "USDC": Token(
-        Scroll, address="0x06eFdBFf2a14a7c8E15944D1F4A48F9F95F663A4"
-    ),
+    "USDT": Token(Scroll, address="0xf55BEC9cafDbE8730f096Aa55dad6D22d44099Df"),
+    "USDC": Token(Scroll, address="0x06eFdBFf2a14a7c8E15944D1F4A48F9F95F663A4"),
 }
 BSC_TOKENS = dict(
     USDC=Token(BSC, address="0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d"),
@@ -786,6 +765,9 @@ ZKSYNC_TOKENS = dict(
     USDT=Token(zkSync, address="0x493257fD37EDB34451f62EDf8D2a0C418852bA4C"),
     USDC=Token(zkSync, address="0x1d17CBcF0D6D143135aE902365D2E5e2A16538D4"),
 )
+ZORA_TOKENS = dict(
+    ZORA=Token(Zora, address="0x1111111111166b7FE7bd91427724B487980aFc69")
+)
 TOKENS = {
     "ETHEREUM": ETHEREUM_TOKENS,
     "BASE": BASE_TOKENS,
@@ -794,11 +776,10 @@ TOKENS = {
     "ARBITRUM": ARBITRUM_TOKENS,
     "POLYGON": POLYGON_TOKENS,
     "OPTIMISM": OPTIMISM_TOKENS,
+    "ZORA": ZORA_TOKENS,
 }
 
 if __name__ == "__main__":
-    a = Token(
-        chain=Optimism, address="0x4200000000000000000000000000000000000006"
-    )
+    a = Token(chain=Optimism, address="0x4200000000000000000000000000000000000006")
     asyncio.run(a.get_token_info())
     print(a)

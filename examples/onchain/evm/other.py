@@ -17,6 +17,7 @@ from web3mt.onchain.evm.client import (
     TransactionParameters,
 )
 from web3mt.onchain.evm.models import *
+from web3mt.onchain.evm.models import ZORA_TOKENS
 from web3mt.utils import logger, Profilecurl_cffiAsyncSession
 
 main_chains = [
@@ -251,7 +252,7 @@ async def main():
 
 
 if __name__ == "__main__":
-    asyncio.run(check_balance_batch_multicall())
+    asyncio.run(check_balance_batch_multicall([Zora], ZORA_TOKENS["ZORA"]))
     # asyncio.run(check_balance_batch_multicall([zkSync], ZKSYNC_TOKENS["USDC"]))
     # asyncio.run(main())
     # asyncio.run(info())

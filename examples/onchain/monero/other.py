@@ -41,4 +41,4 @@ async def main():
 
 
 if __name__ == "__main__":
-    asyncio.run(balance())
+    asyncio.run(collect_on_primary_account())
