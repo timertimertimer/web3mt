@@ -170,7 +170,7 @@ class BaseClient(BitcoinRPC):
         change: TokenAmount = balance - amount - fee
         tx = Transaction(
             network=self.chain.name.lower(),
-            outputs=[Output(amount.sat, to, network=self.chain.name.lower())]
+            outputs=[Output(amount.sats, to, network=self.chain.name.lower())]
             if to
             else custom_outputs,
         )
