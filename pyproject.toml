@@ -51,6 +51,7 @@ dev = [
     "pandas>=2.2.3,<3",
     "monero>=1.1.1",
     "pre-commit>=4.2.0",
+    "redis>=6.2.0",
 ]
 
 [tool.uv.sources]

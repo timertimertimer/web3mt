@@ -218,3 +218,7 @@ class BaseClient(BitcoinRPC):
                 f"Tx: {self.chain.explorer.rstrip('/')}/tx/{tx_hash}"
             )
         return tx_hash
+
+    async def get_block(self, hexstring: str):
+        return await self.getblock(hexstring)
+
