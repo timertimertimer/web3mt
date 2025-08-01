@@ -48,7 +48,6 @@ space_api_map = {
 class BaseClient(BitcoinRPC):
     def __init__(
         self,
-        rpc: str = btc_env.bitcoin_public_rpc,
         chain: Chain = Bitcoin,
         mnemonic: str = btc_env.bitcoin_mnemonic,
         derivation_path: str = native_segwit_derivation_path.format(i=0),
@@ -61,8 +60,8 @@ class BaseClient(BitcoinRPC):
         self.hk = self.master_key.subkey_for_path(
             path=derivation_path, network=self.chain.name.lower()
         )
-        client = kwargs.pop("client", AsyncClient(timeout=10))
-        super().__init__(rpc, client=client, **kwargs)
+        client = kwargs.pop("client", AsyncClient(timeout=15))
+        super().__init__(chain.rpc, client=client, **kwargs)
 
     def __str__(self):
         return f"{self.hk.address()} ({self.chain.name.capitalize()})"
