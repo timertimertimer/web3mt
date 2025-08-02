@@ -1,4 +1,7 @@
 import asyncio
+import os
+from typing import Iterable
+
 import redis.asyncio as redis
 from httpx import AsyncClient
 
@@ -11,6 +14,9 @@ def add_unique_to_list(redis_client, key, value):
         redis_client.rpush(key, value)
 
 
+watcher_url = os.getenv("WATCHER_URL")
+if not watcher_url:
+    logger.warning(f"Watcher url was not provided")
 redis_client = redis.Redis(host="localhost", port=6379, decode_responses=True)
 
 receivers = dict()
@@ -19,23 +25,17 @@ receivers = dict()
 class WatcherClient:
     def __init__(self):
         self.client = AsyncClient(
-            base_url="http://92.53.84.182:8095",
+            base_url=watcher_url,
             headers={"Contet-Type": "application/json"},
         )
 
-    async def append_addresses_to_watchlist(
-        self, addresses: list[str] | list[dict]
-    ) -> None:
-        if isinstance(addresses[0], dict):
-            addresses = [el["value"] for el in addresses]
-        await redis_client.sadd("addresses", *addresses)
-        existing_addresses = await redis_client.smembers("addresses")
+    async def update_watch_list(self, addresses: Iterable[str]) -> None:
         response = await self.client.post(
             "/watcher.addresses.v1.AddressesService/UpdateWatchList",
             json={
                 "addresses": [
                     {"value": el, "blockchain": "BLOCKCHAIN_BITCOIN"}
-                    for el in existing_addresses
+                    for el in addresses
                 ]
             },
             headers={"X-Client-ID": "00000000-0000-0000-0000-000000000000"},
@@ -70,12 +70,19 @@ async def main():
                 addresses.append(address)
             else:
                 break
-        await watcher_client.append_addresses_to_watchlist(addresses)
+
+        if isinstance(addresses[0], dict):
+            addresses = [el["value"] for el in addresses]
+        await redis_client.sadd("addresses", *addresses)
+        if watcher_url:
+            addresses = await redis_client.smembers("addresses")
+            await watcher_client.update_watch_list(addresses)
         block_hash = block_data["previousblockhash"]
 
     print(receivers)
     print(sorted(receivers.items(), key=lambda x: -x[1]))
     return tx_data
+
 
 if __name__ == "__main__":
     asyncio.run(main())

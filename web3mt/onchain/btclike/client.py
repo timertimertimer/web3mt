@@ -49,22 +49,14 @@ class BaseClient(BitcoinRPC):
     def __init__(
         self,
         chain: Chain = Bitcoin,
-        mnemonic: str = btc_env.bitcoin_mnemonic,
-        derivation_path: str = native_segwit_derivation_path.format(i=0),
         **kwargs,
     ):
         self.chain = chain
-        self.master_key = HDKey.from_passphrase(
-            mnemonic, network=self.chain.name.lower()
-        )
-        self.hk = self.master_key.subkey_for_path(
-            path=derivation_path, network=self.chain.name.lower()
-        )
         client = kwargs.pop("client", AsyncClient(timeout=15))
         super().__init__(chain.rpc, client=client, **kwargs)
 
     def __str__(self):
-        return f"{self.hk.address()} ({self.chain.name.capitalize()})"
+        return f"{self.chain.name.capitalize()} BaseClient"
 
     async def __aenter__(self):
         return self
@@ -117,6 +109,29 @@ class BaseClient(BitcoinRPC):
 
     async def get_blockchain_info(self):
         return await self.getblockchaininfo()
+
+    async def get_block(self, hexstring: str):
+        return await self.getblock(hexstring)
+
+
+class Client(BaseClient):
+    def __init__(
+        self,
+        chain: Chain = Bitcoin,
+        mnemonic: str = btc_env.bitcoin_mnemonic,
+        derivation_path: str = native_segwit_derivation_path.format(i=0),
+        **kwargs,
+    ):
+        self.master_key = HDKey.from_passphrase(
+            mnemonic, network=self.chain.name.lower()
+        )
+        self.hk = self.master_key.subkey_for_path(
+            path=derivation_path, network=self.chain.name.lower()
+        )
+        super().__init__(chain)
+
+    def __str__(self):
+        return f"{self.hk.address()} ({self.chain.name.capitalize()})"
 
     async def get_balance(
         self, address_index: int = None, echo: bool = DEV
@@ -217,7 +232,3 @@ class BaseClient(BitcoinRPC):
                 f"Tx: {self.chain.explorer.rstrip('/')}/tx/{tx_hash}"
             )
         return tx_hash
-
-    async def get_block(self, hexstring: str):
-        return await self.getblock(hexstring)
-
