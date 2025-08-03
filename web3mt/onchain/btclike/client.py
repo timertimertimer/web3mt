@@ -122,13 +122,13 @@ class Client(BaseClient):
         derivation_path: str = native_segwit_derivation_path.format(i=0),
         **kwargs,
     ):
+        super().__init__(chain)
         self.master_key = HDKey.from_passphrase(
             mnemonic, network=self.chain.name.lower()
         )
         self.hk = self.master_key.subkey_for_path(
             path=derivation_path, network=self.chain.name.lower()
         )
-        super().__init__(chain)
 
     def __str__(self):
         return f"{self.hk.address()} ({self.chain.name.capitalize()})"
