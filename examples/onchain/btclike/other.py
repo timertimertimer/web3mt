@@ -4,6 +4,11 @@ from typing import Iterable
 
 import redis.asyncio as redis
 from httpx import AsyncClient
+from dotenv import load_dotenv
+
+from web3mt.onchain.btclike.models import Bitcoin
+
+load_dotenv()
 
 from web3mt.onchain.btclike.client import BaseClient
 from web3mt.utils import logger
@@ -44,8 +49,9 @@ class WatcherClient:
         return data
 
 
-async def main():
-    client = BaseClient()
+async def main(use_watcher: bool = True):
+    Bitcoin.rpc = 'https://node-btc.dv.net/'
+    client = BaseClient(chain=Bitcoin)
     watcher_client = WatcherClient()
     best_block_hash = await client.getbestblockhash()
     block_hash = best_block_hash
@@ -74,7 +80,7 @@ async def main():
         if isinstance(addresses[0], dict):
             addresses = [el["value"] for el in addresses]
         await redis_client.sadd("addresses", *addresses)
-        if watcher_url:
+        if watcher_url and use_watcher:
             addresses = await redis_client.smembers("addresses")
             await watcher_client.update_watch_list(addresses)
         block_hash = block_data["previousblockhash"]
@@ -83,6 +89,11 @@ async def main():
     print(sorted(receivers.items(), key=lambda x: -x[1]))
     return tx_data
 
+async def some():
+    watcher_client = WatcherClient()
+    with open('addresses.txt', encoding='utf-8') as f:
+        addresses = [row.strip() for row in f]
+    await watcher_client.update_watch_list(addresses)
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    asyncio.run(main(use_watcher=False))

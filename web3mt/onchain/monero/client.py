@@ -144,6 +144,7 @@ class AsyncJSONRPCWallet(AsyncSession):
         subtract_fee_from_outputs: Optional[list[int]] = None,
         get_tx_key: bool = False,
         get_tx_metadata: bool = False,
+        do_not_relay: bool = False,
     ):
         return await self.make_request(
             "transfer",
@@ -153,6 +154,7 @@ class AsyncJSONRPCWallet(AsyncSession):
                 "subtract_fee_from_outputs": subtract_fee_from_outputs,
                 "get_tx_key": get_tx_key,
                 "get_tx_metadata": get_tx_metadata,
+                "do_not_relay": do_not_relay,
             },
         )
 
@@ -180,9 +182,10 @@ class BaseClient:
         destinations: list[dict[int, str]],
         account_index: Optional[int] = None,
         subtract_fee_from_outputs: Optional[list[int]] = None,
+        do_not_relay: Optional[bool] = None,
     ):
         data = await self.wallet.transfer(
-            destinations, account_index, subtract_fee_from_outputs
+            destinations, account_index, subtract_fee_from_outputs, do_not_relay
         )
         logger.debug(f"{self} | Transfered {data}")
         return data
