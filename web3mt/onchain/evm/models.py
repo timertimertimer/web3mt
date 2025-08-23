@@ -768,6 +768,9 @@ ZKSYNC_TOKENS = dict(
 ZORA_TOKENS = dict(
     ZORA=Token(Zora, address="0x1111111111166b7FE7bd91427724B487980aFc69")
 )
+LINEA_TOKENS = dict(
+    LXP=Token(Linea, address="0xd83af4fbD77f3AB65C3B1Dc4B38D7e67AEcf599A")
+)
 TOKENS = {
     "ETHEREUM": ETHEREUM_TOKENS,
     "BASE": BASE_TOKENS,
@@ -777,6 +780,7 @@ TOKENS = {
     "POLYGON": POLYGON_TOKENS,
     "OPTIMISM": OPTIMISM_TOKENS,
     "ZORA": ZORA_TOKENS,
+    "LINEA": LINEA_TOKENS,
 }
 
 if __name__ == "__main__":

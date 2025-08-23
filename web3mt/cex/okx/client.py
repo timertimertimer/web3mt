@@ -139,10 +139,15 @@ class OKX(CEX):
         )
         if data := data.get("data"):
             return data[0]["askPx"]
-        elif "Instrument ID or Spread ID doesn't exist" in data["msg"]:
-            logger.info(f"{self} | {data['msg']}. {coin.symbol}-{usd_ticker}")
+        message = (
+            data.get("msg", "Empty message")
+            if isinstance(data, dict)
+            else "Empty message"
+        )
+        if "Instrument ID or Spread ID doesn't exist" in message:
+            logger.info(f"{self} | {message=} {data=}. {coin.symbol}-{usd_ticker}")
         else:
-            logger.warning(f"{self} | {data['msg']}. {coin.symbol}-{usd_ticker}")
+            logger.warning(f"{self} | {message=} {data=}. {coin.symbol}-{usd_ticker}")
         return None
 
     async def get_funding_balance(
