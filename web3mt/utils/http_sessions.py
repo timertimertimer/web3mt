@@ -332,7 +332,7 @@ class httpxAsyncClient(BaseAsyncSession, AsyncClient):
         exception,
         retry_delay,
     ):
-        raise NotImplementedError  # TODO
+        raise NotImplementedError  # TODO: possible exceptions - ReadTimeout (proxy not working), ProxyError('407 Proxy Authentication Required')
 
     @BaseAsyncSession.retry_request
     async def make_request(

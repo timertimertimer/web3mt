@@ -13,15 +13,15 @@ from solders.rpc.responses import GetBalanceResp, GetTransactionCountResp, GetTo
     GetTokenAccountsByOwnerJsonParsedResp
 from solders.keypair import Keypair
 
-from web3db.core import DBHelper
+from web3db.core import create_db_instance
 from web3db.models import Profile
 
-from web3mt.config import env
 from web3mt.utils.logger import logger
 
 # rpc = f"https://mainnet.helius-rpc.com/?api-key={env.HELIUS_API_KEY}"
 rpc = 'https://grateful-jerrie-fast-mainnet.helius-rpc.com/'
 OGMEME_token_mint_address = Pubkey.from_string('jE7q5qieKaUXmyhuWTXmGVtpeBoKtgbMbtks7LKogme')
+db = create_db_instance()
 
 
 async def get_balance_batch(profiles: list[Profile]):
@@ -97,16 +97,14 @@ async def get_token_balance_batch(profiles: list[Profile], token_address: Pubkey
 
 
 async def main2():
-    db = DBHelper(env.LOCAL_CONNECTION_STRING)
     profiles = await db.get_all_from_table(Profile)
     await get_token_balance(profiles[0])
 
 
 async def main():
-    db = DBHelper(env.LOCAL_CONNECTION_STRING)
-    # profiles = await db.get_all_from_table(Profile)
-    profiles = await db.get_rows_by_id([1], Profile)
-    total = await get_token_balance_batch(profiles, OGMEME_token_mint_address)
+    profiles = await db.get_all_from_table(Profile)
+    # profiles = await db.get_rows_by_id([1], Profile)
+    total = await get_balance_batch(profiles)
     logger.success(f'Total: {total} SOL')
     # await asyncio.gather(*[get_token_balance(profile, OGMEME_token_mint_address) for profile in profiles])
 

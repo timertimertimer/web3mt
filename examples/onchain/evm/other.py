@@ -17,7 +17,7 @@ from web3mt.onchain.evm.client import (
     TransactionParameters,
 )
 from web3mt.onchain.evm.models import *
-from web3mt.onchain.evm.models import ZORA_TOKENS
+from web3mt.onchain.evm.models import ZORA_TOKENS, LINEA_TOKENS
 from web3mt.utils import logger, Profilecurl_cffiAsyncSession
 
 main_chains = [
@@ -37,7 +37,7 @@ db = create_db_instance()
 
 
 async def _get_balance(
-    profile: Profile, chain: Chain, semaphore: asyncio.Semaphore
+        profile: Profile, chain: Chain, semaphore: asyncio.Semaphore
 ) -> TokenAmount:
     async with semaphore:
         client = ProfileClient(chain=chain, profile=profile)
@@ -45,11 +45,11 @@ async def _get_balance(
 
 
 async def _get_balance_multicall(
-    chain: Chain,
-    profiles: list[Profile],
-    token: Optional[Token] = None,
-    echo: bool = False,
-    is_condition=lambda x: x.ether > 0,
+        chain: Chain,
+        profiles: list[Profile],
+        token: Optional[Token] = None,
+        echo: bool = False,
+        is_condition=lambda x: x.ether > 0,
 ) -> TokenAmount:
     client = BaseClient(chain=chain)
     contract = None
@@ -63,7 +63,7 @@ async def _get_balance_multicall(
     all_balances = []
     for i in range(0, len(profiles), batch_size):
         async with client.w3.batch_requests() as batch:
-            for profile in profiles[i : i + batch_size]:
+            for profile in profiles[i: i + batch_size]:
                 if token == chain.native_token:
                     batch.add(
                         client.w3.eth.get_balance(
@@ -79,7 +79,7 @@ async def _get_balance_multicall(
                 balances = [0] * batch_size
             except (TimeoutError, BadResponseFormat) as exception:
                 logger.warning(f"{chain} | {type(exception)=}, {exception=}")
-                pass
+                raise exception
         all_balances += balances
     for balance, profile in zip(all_balances, profiles):
         token_amount = TokenAmount(balance, is_wei=True, token=token)
@@ -93,9 +93,9 @@ async def _get_balance_multicall(
 
 
 async def check_balance_batch_multicall(
-    chains: Optional[list[Chain]] = None,
-    token: Optional[Token] = None,
-    is_condition=lambda x: x.ether > 0,
+        chains: Optional[list[Chain]] = None,
+        token: Optional[Token] = None,
+        is_condition=lambda x: x.ether > 0,
 ):
     chains = chains or main_chains
     if token:
@@ -131,11 +131,15 @@ async def check_balance_batch_multicall(
     if token:
         full_log += f"Total {token.symbol} in wallets: {total} {token.symbol} = {(total * token.price):.2f}$"
         logger.info(full_log)
+        return total * token.price
     else:
+        total_in_usd = 0
         for symbol, amount in native_tokens.items():
+            total_in_usd += amount * Coin.instances()[symbol].price
             logger.info(
                 f"Total {symbol} in wallets: {amount} {symbol} = {(amount * Coin.instances()[symbol].price):.2f}$"
             )
+        return total_in_usd
 
 
 async def check_balance_batch(chains: list[Chain] = None):
@@ -177,7 +181,7 @@ async def check_balance_batch(chains: list[Chain] = None):
 
 
 async def have_balance(
-    client: ProfileClient, ethers: float = 0, echo: bool = False
+        client: ProfileClient, ethers: float = 0, echo: bool = False
 ) -> bool:
     balance = await client.balance_of(echo=echo)
     if balance.ether > ethers:
@@ -186,7 +190,7 @@ async def have_balance(
 
 
 async def check_eth_activated_profile(
-    profile: Profile, log_only_activated: bool = False
+        profile: Profile, log_only_activated: bool = False
 ) -> int | None:
     client = ProfileClient(profile=profile)
     nonce = await client.nonce()
@@ -201,7 +205,7 @@ async def check_eth_activated_profile(
 
 
 async def deposit_token_to_okx(
-    profile: Profile, amount: TokenAmount, use_full_balance: bool = False
+        profile: Profile, amount: TokenAmount, use_full_balance: bool = False
 ):
     client = ProfileClient(profile=profile, chain=amount.token.chain)
     balance = await client.balance_of(token=amount.token)
@@ -252,7 +256,15 @@ async def main():
 
 
 if __name__ == "__main__":
-    asyncio.run(check_balance_batch_multicall([Zora], ZORA_TOKENS["ZORA"]))
+    asyncio.run(check_balance_batch_multicall())
+    # SAHARA_TOKEN = Token(chain=BSC, address="0xFDFfB411C4A70AA7C95D5C981a6Fb4Da867e1111")
+    # total = asyncio.run(check_balance_batch_multicall([BSC], SAHARA_TOKEN))
+    # for chain_name, tokens_dict in TOKENS.items():
+    #     for token_name, token in tokens_dict.items():
+    #         total += asyncio.run(check_balance_batch_multicall([token.chain], token))
+    # logger.info(total)
+    # asyncio.run(check_balance_batch_multicall([Linea], LINEA_TOKENS['LXP']))
+    # asyncio.run(check_balance_batch_multicall([Zora], ZORA_TOKENS["ZORA"]))
     # asyncio.run(check_balance_batch_multicall([zkSync], ZKSYNC_TOKENS["USDC"]))
     # asyncio.run(main())
     # asyncio.run(info())

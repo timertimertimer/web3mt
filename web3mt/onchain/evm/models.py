@@ -665,7 +665,7 @@ Linea = Chain(
 
 zkSync = Chain(
     name="zkSync",
-    rpc="https://1rpc.io/zksync2-era",
+    rpc="https://rpc.ankr.com/zksync_era",
     chain_id=324,
     explorer="https://explorer.zksync.io/",
     eip1559_tx=True,
@@ -732,14 +732,17 @@ Ronin = Chain(
 Ronin.native_token.symbol = "RON"
 
 ETHEREUM_TOKENS = {
+    "WETH": Token(Ethereum, address="0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2"),
     "USDT": Token(Ethereum, address="0xdAC17F958D2ee523a2206206994597C13D831ec7"),
     "USDC": Token(Ethereum, address="0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48"),
 }
 BASE_TOKENS = {
+    "WETH": Token(Base, address="0x4200000000000000000000000000000000000006"),
     "USDC": Token(Base, address="0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"),
     "USDT": Token(Base, address="0xfde4C96c8593536E31F229EA8f37b2ADa2699bb2"),
 }
 SCROLL_TOKENS = {
+    "WETH": Token(Scroll, address="0x5300000000000000000000000000000000000004"),
     "SCR": Token(Scroll, address="0xd29687c813d741e2f938f4ac377128810e217b1b"),
     "USDT": Token(Scroll, address="0xf55BEC9cafDbE8730f096Aa55dad6D22d44099Df"),
     "USDC": Token(Scroll, address="0x06eFdBFf2a14a7c8E15944D1F4A48F9F95F663A4"),
@@ -758,15 +761,22 @@ POLYGON_TOKENS = dict(
     USDC=Token(Polygon, address="0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359"),
 )
 OPTIMISM_TOKENS = dict(
+    WETH=Token(Optimism, address="0x4200000000000000000000000000000000000006"),
     USDT=Token(Optimism, address="0x94b008aA00579c1307B0EF2c499aD98a8ce58e58"),
     USDC=Token(Optimism, address="0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85"),
 )
 ZKSYNC_TOKENS = dict(
+    WETH=Token(zkSync, address="0xf00DAD97284D0c6F06dc4Db3c32454D4292c6813"),
     USDT=Token(zkSync, address="0x493257fD37EDB34451f62EDf8D2a0C418852bA4C"),
     USDC=Token(zkSync, address="0x1d17CBcF0D6D143135aE902365D2E5e2A16538D4"),
 )
 ZORA_TOKENS = dict(
-    ZORA=Token(Zora, address="0x1111111111166b7FE7bd91427724B487980aFc69")
+    WETH=Token(Zora, address="0x4200000000000000000000000000000000000006")
+)
+LINEA_TOKENS = dict(
+    LXP=Token(Linea, address="0xd83af4fbD77f3AB65C3B1Dc4B38D7e67AEcf599A"),
+    USDC=Token(Linea, address="0x176211869ca2b568f2a7d4ee941e073a821ee1ff"),
+    USDT=Token(Linea, address="0xa219439258ca9da29e9cc4ce5596924745e12b93")
 )
 TOKENS = {
     "ETHEREUM": ETHEREUM_TOKENS,
@@ -777,6 +787,7 @@ TOKENS = {
     "POLYGON": POLYGON_TOKENS,
     "OPTIMISM": OPTIMISM_TOKENS,
     "ZORA": ZORA_TOKENS,
+    "LINEA": LINEA_TOKENS,
 }
 
 if __name__ == "__main__":
