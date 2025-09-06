@@ -92,7 +92,7 @@ async def _get_balance_multicall(
     return total_by_chain
 
 
-async def get_balance_batch_multicall(
+async def check_balance_batch_multicall(
     chains: Optional[list[Chain]] = None,
     token: Optional[Token] = None,
     is_condition=lambda x: x.ether > 0,
@@ -255,7 +255,13 @@ async def main():
 
 
 if __name__ == "__main__":
-    asyncio.run(get_balance_batch_multicall())
+    asyncio.run(check_balance_batch_multicall())
+    # SAHARA_TOKEN = Token(chain=BSC, address="0xFDFfB411C4A70AA7C95D5C981a6Fb4Da867e1111")
+    # total = asyncio.run(check_balance_batch_multicall([BSC], SAHARA_TOKEN))
+    # for chain_name, tokens_dict in TOKENS.items():
+    #     for token_name, token in tokens_dict.items():
+    #         total += asyncio.run(check_balance_batch_multicall([token.chain], token))
+    # logger.info(total)
     # asyncio.run(check_balance_batch_multicall([Linea], LINEA_TOKENS['LXP']))
     # asyncio.run(check_balance_batch_multicall([Zora], ZORA_TOKENS["ZORA"]))
     # asyncio.run(check_balance_batch_multicall([zkSync], ZKSYNC_TOKENS["USDC"]))
