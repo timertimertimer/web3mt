@@ -92,7 +92,7 @@ async def _get_balance_multicall(
     return total_by_chain
 
 
-async def check_balance_batch_multicall(
+async def get_balance_batch_multicall(
     chains: Optional[list[Chain]] = None,
     token: Optional[Token] = None,
     is_condition=lambda x: x.ether > 0,
@@ -133,9 +133,12 @@ async def check_balance_batch_multicall(
         logger.info(full_log)
     else:
         for symbol, amount in native_tokens.items():
+            total_by_chain = amount * Coin.instances()[symbol].price
+            total += total_by_chain
             logger.info(
-                f"Total {symbol} in wallets: {amount} {symbol} = {(amount * Coin.instances()[symbol].price):.2f}$"
+                f"Total {symbol} in wallets: {amount} {symbol} = {total_by_chain:.2f}$"
             )
+        logger.info(f"Total: {total:.2f}$")
 
 
 async def check_balance_batch(chains: list[Chain] = None):
@@ -252,7 +255,7 @@ async def main():
 
 
 if __name__ == "__main__":
-    asyncio.run(check_balance_batch_multicall())
+    asyncio.run(get_balance_batch_multicall())
     # asyncio.run(check_balance_batch_multicall([Linea], LINEA_TOKENS['LXP']))
     # asyncio.run(check_balance_batch_multicall([Zora], ZORA_TOKENS["ZORA"]))
     # asyncio.run(check_balance_batch_multicall([zkSync], ZKSYNC_TOKENS["USDC"]))
