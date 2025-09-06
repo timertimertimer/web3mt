@@ -778,6 +778,9 @@ LINEA_TOKENS = dict(
     USDC=Token(Linea, address="0x176211869ca2b568f2a7d4ee941e073a821ee1ff"),
     USDT=Token(Linea, address="0xa219439258ca9da29e9cc4ce5596924745e12b93")
 )
+LINEA_TOKENS = dict(
+    LXP=Token(Linea, address="0xd83af4fbD77f3AB65C3B1Dc4B38D7e67AEcf599A")
+)
 TOKENS = {
     "ETHEREUM": ETHEREUM_TOKENS,
     "BASE": BASE_TOKENS,

@@ -17,7 +17,6 @@ from web3mt.onchain.evm.client import (
     TransactionParameters,
 )
 from web3mt.onchain.evm.models import *
-from web3mt.onchain.evm.models import ZORA_TOKENS, LINEA_TOKENS
 from web3mt.utils import logger, Profilecurl_cffiAsyncSession
 
 main_chains = [
