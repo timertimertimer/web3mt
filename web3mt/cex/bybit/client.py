@@ -116,11 +116,12 @@ class Bybit(CEX):
 
     async def get_trading_balance(
         self, user: User = None, coins: list[Asset | Coin | str] = None
-    ) -> list[Asset]:
+    ) -> list[Asset] | None:
         trading_account = user.trading_account or self.main_user.trading_account
         account_type = await self.get_uid_wallet_type(user)
         if "SPOT" in account_type or "UNIFIED" in account_type:
             return await self._get_balance(trading_account, coins)
+        return None
 
     async def _get_balance(
         self, account: Account, coins: list[Asset | Coin | str] = None

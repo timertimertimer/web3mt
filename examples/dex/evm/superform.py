@@ -19,6 +19,7 @@ class Superform:
     async def __aenter__(self):
         if await self.session.check_proxy():
             return self
+        return None
 
     async def __aexit__(self, exc_type, exc_val, exc_tb=None):
         if exc_type:
@@ -82,7 +83,7 @@ class Superform:
 async def start(profile: Profile):
     async with Superform(profile) as sf:
         if not sf:
-            return
+            return None
         # await sf.mint_superfrens()
         return await sf.claim_piggy()
 

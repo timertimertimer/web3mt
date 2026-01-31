@@ -17,7 +17,7 @@ from examples.dex.evm.sahara.utils import (
 )
 from web3mt.config import env
 from web3mt.dex.models import DEX
-from web3mt.onchain.evm.client import BaseClient
+from web3mt.onchain.evm.client import BaseClient, HTTPProviderConfig
 from web3mt.utils import logger, curl_cffiAsyncSession, sleep, FileManager
 
 Account.enable_unaudited_hdwallet_features()
@@ -46,7 +46,7 @@ class SaharaClient(DEX):
         client = BaseClient(
             Account.from_key(account.private) if account.private.startswith('0x') or ' ' not in account.private else
             Account.from_mnemonic(account.private),
-            chain=SaharaAI_Testnet, proxy=account.proxy
+            chain=SaharaAI_Testnet, http_provider_config=HTTPProviderConfig(proxy=account.proxy)
         )
         super().__init__(session, client)
         self.evm_client.log_info = f'{account.account_id} | {self.evm_client.log_info}'
@@ -63,7 +63,7 @@ class SaharaClient(DEX):
     async def __aenter__(self):
         await super().__aenter__()
         if not await self.profile():
-            return
+            return None
         await self.all_seasons_points()
         return self
 
@@ -98,7 +98,7 @@ class SaharaClient(DEX):
             return data
         except RequestsError as e:
             logger.error(f'{self} | {e}')
-            return
+        return None
 
     get = partialmethod(_make_request, 'GET')
     post = partialmethod(_make_request, 'POST')
@@ -108,14 +108,14 @@ class SaharaClient(DEX):
                 f'{self.MAIN_DOMAIN}/v1/auth/generate-message',
                 json={'address': self.evm_client.account.address, 'chainId': hex(SaharaAI_Testnet.chain_id)}
         )):
-            return
+            return None
         if not data['success']:
             logger.error(f'{self} | Something went wrong: {data}')
-            return
+            return None
         data = data['data']
         if not data['ipAllowed']:
             logger.warning(f'{self} | IP {self.evm_client.proxy} not allowed')
-            return
+            return None
         return data['message']
 
     async def login(self) -> bool:
@@ -146,19 +146,19 @@ class SaharaClient(DEX):
             except RequestsError as e:
                 self.http_session.headers.pop('Authorization', None)
                 if not (await self.login()):
-                    return
+                    return None
         if not data['success']:
             logger.error(f'{self} | Something went wrong: {data}')
-            return
+            return None
         self.user_info = data.get('data')
         return self.user_info
 
     async def all_seasons_points(self):
         if not (data := await self.get(f'{self.API_URL}/vault/seasons')):
-            return
+            return None
         if not data['success']:
             logger.error(f'{self} | Something went wrong: {data}')
-            return
+            return None
         total_sp = 0
         for season in data.get('data'):
             if season['name'] == self.CURRENT_SEASON_NAME:
@@ -176,10 +176,11 @@ class SaharaClient(DEX):
         )
         if not data['success']:
             logger.error(f'{self} | Something went wrong: {data}')
-            return
+            return None
         if data := data.get('data'):
             data = data['data']
             return data
+        return None
 
     get_in_progress_tasks = partialmethod(get_tasks, "Active")
     get_closed_tasks = partialmethod(get_tasks, "Complete")
@@ -206,7 +207,7 @@ class SaharaClient(DEX):
         )
         if not data['success']:
             logger.error(f'{self} | Something went wrong: {data}')
-            return
+            return None
         if data := data.get('data'):
             data = data['data']
             filtered_data = []
@@ -218,6 +219,7 @@ class SaharaClient(DEX):
 
             logger.info(f'{self} | Got {len(filtered_data)} new tasks')
             return filtered_data
+        return None
 
     async def join_task(self, task_id: int, task_name: str = None):
         _, data = await self.http_session.post(f'{self.API_URL}/jobs/join/{task_id}/individual')
@@ -258,25 +260,28 @@ class SaharaClient(DEX):
         _, data = await self.http_session.post(f'{self.API_URL}/individuals/join/{exam_id}/exam')
         if not data['success']:
             logger.error(f'{self} | Something went wrong: {data}')
-            return
+            return None
         if data := data.get('data'):
             return data
+        return None
 
     async def get_exam_status(self, exam_id: int) -> bool | None:
         _, data = await self.http_session.get(f'{self.API_URL}/individuals/exam/{exam_id}/status')
         if not data['success']:
             logger.error(f'{self} | Something went wrong: {data}')
-            return
+            return None
         if data := data.get('data'):
             return data
+        return None
 
     async def get_exam_task_id(self, exam_id: int):
         _, data = await self.http_session.post(f'{self.API_URL}/individuals/exam/{exam_id}/tasks')
         if not data['success']:
             logger.error(f'{self} | Something went wrong: {data}')
-            return
+            return None
         if data := data.get('data'):
             return data[0]['task']['id']
+        return None
 
     async def submit_exam_answers(self, exam_id: int, task_id: int, answers: list[dict], task_name: str = None):
         _, data = await self.http_session.post(f'{self.API_URL}/individuals/exam/{exam_id}/submit-answers', json=dict(
@@ -284,19 +289,21 @@ class SaharaClient(DEX):
         ))
         if not data['success']:
             logger.error(f'{self} | Something went wrong: {data}')
-            return
+            return None
         if data := data.get('data'):
             accuracy = float(data['content']) / 100
             logger.debug(f'{self} | Exam for "{task_name}" ({task_id}) passed. Accuracy: {accuracy:.2f}%')
             return accuracy
+        return None
 
     async def get_exam_questions_and_task_id(self, exam_id: int) -> tuple[list[dict], int] | None:
         _, data = await self.http_session.get(f'{self.API_URL}/batches/{exam_id}/labeling-tasks')
         if not data['success']:
             logger.error(f'{self} | Something went wrong: {data}')
-            return
+            return None
         if data := data.get('data'):
             return data[0]['tasks'][0]['questions'], data[0]['tasks'][0]['task']['id']
+        return None
 
     async def do_in_progress_tasks(self, review: bool = True, annotate: bool = False):
         q = deque(await self.get_in_progress_tasks())
@@ -387,13 +394,13 @@ class SaharaClient(DEX):
             _, data = await self.http_session.get(f'{self.API_URL}/jobs/{job_id}/individual')
         except RequestsError as e:
             logger.error(f'{self} | {e}')
-            return
+            return None
         if not data['success']:
             logger.error(f'{self} | Something went wrong: {data}')
-            return
+            return None
         if not (data := data.get('data')):
             logger.warning(f'{self} | No job data. Maybe something went wrong')
-            return
+            return None
         return data
 
     async def _get_answer_to_question_index_gpt(
@@ -427,6 +434,7 @@ class SaharaClient(DEX):
                 logger.warning(f'{self} | {e.args[0]}. Trying again {i + 1}/{retry_count}')
                 await sleep(5, 10, log_info=f'{self}', echo=True)
         logger.error(f'{self} | No answer for question {choice_question}')
+        return None
 
     async def do_label_task(self, job_id: int, job_name: str, min_time_seconds: int, label_type: str):
         async def do_context_label_task():
@@ -533,6 +541,7 @@ class SaharaClient(DEX):
             submit_answers[i]['time'] = time
         await sleep(min_time_seconds * len(submit_answers) + random.randint(5, 20), log_info=f'{self}', echo=True)
         await self.submit_annotating(submit_answers, submit_hp_answers, job_name, job_id)
+        return None
 
     async def do_review_task(self, job_id: int, job_name: str, min_time_seconds: int):
         questions = await self.get_questions(job_id)
@@ -560,7 +569,7 @@ class SaharaClient(DEX):
                             )
                         except Exception as e:
                             logger.error(f'{self} | Error with answer - {answer}. {e}')
-                            return
+                            return None
                     else:
                         text_answers.append(answer['answer'])
                 for j in range(retry_count):
@@ -612,15 +621,16 @@ class SaharaClient(DEX):
             review['questionReviews'] = question_reviews
         await sleep(min_time_seconds * len(reviews) + random.randint(5, 20), log_info=f'{self}', echo=True)
         await self.submit_review(hp_reviews, reviews, job_name, job_id)
+        return None
 
     async def get_questions(self, job_id: int) -> list[dict] | None:
         _, data = await self.http_session.get(f'{self.API_URL}/jobs/{job_id}/labeling-tasks')
         if not data['success']:
             logger.error(f'{self} | Something went wrong: {data}')
-            return
+            return None
         if not (data := data.get('data')):
             logger.warning(f'{self} | No labeling tasks for job. Maybe something went wrong')
-            return
+            return None
         data = data[0]
         questions = data['tasks'][0]['questions']
         return questions
@@ -634,13 +644,13 @@ class SaharaClient(DEX):
                 return False
             else:
                 logger.error(f'{self} | {e}')
-                return
+                return None
         if not data['success']:
             logger.error(f'{self} | Something went wrong: {data}')
-            return
+            return None
         if not (data := data.get('data')):
             logger.info(f'{self} | No review jobs for "{task_name}" task')
-            return
+            return None
         hp_reviews = []
         reviews = []
         answers = []
@@ -669,7 +679,7 @@ class SaharaClient(DEX):
                         honeyPotReviewSession=honey_pot_session,
                     ))
                 else:
-                    return
+                    return None
             try:
                 answers.append([answer for answer in json.loads(question['taskSession']['answer'])])
             except JSONDecodeError as e:
@@ -691,10 +701,10 @@ class SaharaClient(DEX):
             return False
         if not data['success']:
             logger.error(f'{self} | Something went wrong: {data}')
-            return
+            return None
         if not (data := data.get('data')):
             logger.info(f'{self} | No annotating jobs for "{task_name}" task')
-            return
+            return None
         submit_hp_answers = []
         submit_answers = []
         hp_data = []
@@ -784,7 +794,7 @@ class SaharaAchievementsClient(SaharaClient):
         data = await self.get(f'{self.API_URL}/achievement/infos')
         if not data['success']:
             logger.error(f'{self} | Something went wrong: {data}')
-            return
+            return None
         return data['data']['inProgress']['achievementIds']
 
     async def achievement_task_progress_list(self, achievement_id: str, task_ids: list[str], achievement_name: str):

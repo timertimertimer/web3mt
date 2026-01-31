@@ -11,7 +11,7 @@ from eth_account.messages import encode_typed_data, encode_defunct
 from examples.dex.evm.zetachain.config import *
 from examples.dex.evm.zetachain.db import update_stats, create_table
 from web3mt.cex import OKX
-from web3mt.onchain.evm.client import ProfileClient, ClientConfig
+from web3mt.onchain.evm.client import ProfileClient, Config
 from web3mt.onchain.evm.models import ZetaChain, TokenAmount, BSC, Token, DefaultABIs
 from web3mt.utils import set_windows_event_loop_policy, logger, sleep, Profilecurl_cffiAsyncSession
 
@@ -30,7 +30,7 @@ class ZetachainHub(ProfileClient):
         super().__init__(
             chain=ZetaChain,
             profile=profile,
-            config=ClientConfig(delay_between_requests=delay_between_rpc_requests)
+            config=Config(delay_between_requests=delay_between_rpc_requests)
         )
         self.session = Profilecurl_cffiAsyncSession(
             profile, headers={
@@ -613,14 +613,14 @@ class ZetachainHub(ProfileClient):
                 )
                 return {'level': data['level'], 'points': data['totalXp'], 'rank': data['rank']}
             except RequestsError:
-                return
+                return None
                 # await sleep(600, 800, profile_id=self.profile.id)
 
 
 async def process_account(profile: Profile) -> dict | None:
     async with ZetachainHub(profile) as zh:
         # await zh.ultiverse_explore()
-        logger.info(f'{zh.log_info} | Balance {await zh._native_balance()} ZETA')
+        logger.info(f'{zh.log_info} | Balance {await zh.balance_of()} ZETA')
         await zh.enroll()
         await sleep(delay_between_http_requests, echo=False)
         await zh.enroll_verify()
@@ -645,7 +645,7 @@ async def swap_btc_to_zeta(profile: Profile):
     client = ProfileClient(
         chain=ZetaChain,
         profile=profile,
-        config=ClientConfig(delay_between_requests=delay_between_rpc_requests)
+        config=Config(delay_between_requests=delay_between_rpc_requests)
     )
     balance = await client.balance_of()
     if balance.ether < 0.1:

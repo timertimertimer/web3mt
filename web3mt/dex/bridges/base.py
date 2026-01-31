@@ -60,5 +60,5 @@ class Bridge(DEX, ABC):
                 f'{self.evm_client.log_info} | Can\'t bridge with {bridge_info.name}. '
                 f'Bridge fee: {bridge_info.bridge_fee}'
             )
-            return
+            return None
         return bridge_info

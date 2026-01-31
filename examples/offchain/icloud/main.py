@@ -36,7 +36,7 @@ class Icloud:
     async def get_emails(self):
         _, data = await self.session.get(f'{self.base_url_v2}/list', params=self.params)
         if not (data := data.get('result')):
-            return
+            return None
         return [{email_data['label']: email_data['hme']} for email_data in data['hmeEmails']]
 
     async def reserve_email(self, label: int):
@@ -46,7 +46,7 @@ class Icloud:
         )
         if not (data.get('result')):
             logger.warning(f'Failed to reserve email {new_email}. {data.get("error", {}).get("errorMessage")}')
-            return
+            return None
         data = data['result']
         return IcloudEmail(label=int(label), login=data['hme']['hme'])
 
@@ -55,7 +55,7 @@ class Icloud:
             f'{self.base_url_v1}/generate', params=self.params, json=dict(langCode="en-us")
         )
         if not (data := data.get('result')):
-            return
+            return None
         return data['hme']
 
 

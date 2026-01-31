@@ -163,7 +163,7 @@ class Conversation:
                 await sleep(5, 10, echo=True)
         else:
             logger.error(f'{self} | GPT failed to respond after {retry_count} attempts')
-            return
+            return None
         assistant_response = response.choices[0].message.content
         logger.info(
             f'{self.id} | {self.task} | Response №{len(self.history) - self.history_set_count + 1}, provider - {response.provider}:\n'
@@ -271,7 +271,7 @@ async def solve_captcha(log_info: str, url: str) -> str | None:
             logger.warning(f'{log_info} | Error when solving captcha. {e}. Trying again {i + 1}/{retry_count}')
             await sleep(10, 30)
     else:
-        return
+        return None
     logger.info(f'{log_info} | Captcha solved')
     return solved.solution.token
 

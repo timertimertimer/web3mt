@@ -77,23 +77,6 @@ class Client(RestClient):
             logger.info(f"{self.log_info} | Balance: {balance}")
         return balance
 
-    async def send_transaction(self, payload: dict) -> int | bool:
-        sender = self.account_.address()
-        sequence = await self.account_sequence_number(sender)
-        while True:
-            try:
-                txn_hash = await self.submit_transaction(self.account_, payload)
-                logger.success(f"{self.log_info} | Sent transaction {txn_hash}")
-                return sequence
-            except Exception as e:
-                if "Transaction already in mempool with a different payload" in str(
-                    e
-                ) or "SEQUENCE_NUMBER_TOO_OLD" in str(e):
-                    sequence += 1
-                    continue
-                logger.error(f"{self.log_info} | {e}")
-                return False
-
     async def send_transaction(
         self, payload: EntryFunction, max_gas_amount: int = ClientConfig.max_gas_amount
     ) -> str | None:
@@ -125,7 +108,7 @@ class Client(RestClient):
                     raw_transaction.sequence_number += 1
                     continue
                 logger.error(f"{self.log_info} | {e}")
-                return
+                return None
 
     async def verify_transaction(self, tx_hash: str, tx_name: str) -> bool:
         while True:

@@ -36,6 +36,8 @@ __all__ = [
     "POLYGON_TOKENS",
     "OPTIMISM_TOKENS",
     "ZKSYNC_TOKENS",
+    "LINEA_TOKENS",
+    "ZORA_TOKENS",
     "TOKENS",
 ]
 
@@ -473,6 +475,7 @@ class TokenAmount:
     def amount_in_usd(self) -> Decimal | None:
         if self.token.price:
             return self.token.price * self.ether
+        return None
 
     def format_ether(self) -> str:
         return format_number(self._ether)
@@ -731,22 +734,22 @@ Ronin = Chain(
 )
 Ronin.native_token.symbol = "RON"
 
-ETHEREUM_TOKENS = {
-    "WETH": Token(Ethereum, address="0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2"),
-    "USDT": Token(Ethereum, address="0xdAC17F958D2ee523a2206206994597C13D831ec7"),
-    "USDC": Token(Ethereum, address="0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48"),
-}
-BASE_TOKENS = {
-    "WETH": Token(Base, address="0x4200000000000000000000000000000000000006"),
-    "USDC": Token(Base, address="0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"),
-    "USDT": Token(Base, address="0xfde4C96c8593536E31F229EA8f37b2ADa2699bb2"),
-}
-SCROLL_TOKENS = {
-    "WETH": Token(Scroll, address="0x5300000000000000000000000000000000000004"),
-    "SCR": Token(Scroll, address="0xd29687c813d741e2f938f4ac377128810e217b1b"),
-    "USDT": Token(Scroll, address="0xf55BEC9cafDbE8730f096Aa55dad6D22d44099Df"),
-    "USDC": Token(Scroll, address="0x06eFdBFf2a14a7c8E15944D1F4A48F9F95F663A4"),
-}
+ETHEREUM_TOKENS = dict(
+    WETH=Token(Ethereum, address="0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2"),
+    USDT=Token(Ethereum, address="0xdAC17F958D2ee523a2206206994597C13D831ec7"),
+    USDC=Token(Ethereum, address="0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48"),
+)
+BASE_TOKENS = dict(
+    WETH=Token(Base, address="0x4200000000000000000000000000000000000006"),
+    USDC=Token(Base, address="0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"),
+    USDT=Token(Base, address="0xfde4C96c8593536E31F229EA8f37b2ADa2699bb2"),
+)
+SCROLL_TOKENS = dict(
+    WETH=Token(Scroll, address="0x5300000000000000000000000000000000000004"),
+    SCR=Token(Scroll, address="0xd29687c813d741e2f938f4ac377128810e217b1b"),
+    USDT=Token(Scroll, address="0xf55BEC9cafDbE8730f096Aa55dad6D22d44099Df"),
+    USDC=Token(Scroll, address="0x06eFdBFf2a14a7c8E15944D1F4A48F9F95F663A4"),
+)
 BSC_TOKENS = dict(
     USDC=Token(BSC, address="0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d"),
     USDT=Token(BSC, address="0x55d398326f99059fF775485246999027B3197955"),
@@ -777,9 +780,6 @@ LINEA_TOKENS = dict(
     LXP=Token(Linea, address="0xd83af4fbD77f3AB65C3B1Dc4B38D7e67AEcf599A"),
     USDC=Token(Linea, address="0x176211869ca2b568f2a7d4ee941e073a821ee1ff"),
     USDT=Token(Linea, address="0xa219439258ca9da29e9cc4ce5596924745e12b93")
-)
-LINEA_TOKENS = dict(
-    LXP=Token(Linea, address="0xd83af4fbD77f3AB65C3B1Dc4B38D7e67AEcf599A")
 )
 TOKENS = {
     "ETHEREUM": ETHEREUM_TOKENS,

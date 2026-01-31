@@ -7,14 +7,11 @@ import hmac
 import json
 from typing import Optional
 
-import websockets
 from hashlib import sha256
-from concurrent.futures import ThreadPoolExecutor
 from decimal import Decimal
 from datetime import datetime, timezone
-from web3mt.cex.base import CEX, Asset
-from web3mt.cex.models import WithdrawInfo, User, Account
-from web3mt.cex.okx.models import *
+from web3mt.cex.base import CEX
+from web3mt.cex.models import WithdrawInfo, User, Account, Asset
 from web3mt.config import DEV, env, cex_env
 from web3mt.models import Coin
 from web3mt.onchain.aptos.models import TokenAmount
@@ -240,10 +237,10 @@ class OKX(CEX):
     async def get_sub_account_list(self) -> list[User]:
         _, data = await self.get("users/subaccount/list")
         return [
-            User(self, sub_account["subAcct"]) for sub_balance_ofaccount in data["data"]
+            User(self, sub_account["subAcct"]) for sub_account in data["data"]
         ]
 
-    async def transfer(self, from_account: Account, to_account: Account, asset: Asset):
+    async def transfer(self, from_account: Account, to_account: Account, asset: Asset, amount: Optional[Decimal] = None):
         """
         0: transfer within account
         1: master account to sub-account (Only applicable to API Key from master account)
@@ -257,7 +254,7 @@ class OKX(CEX):
             else ""
         )
         sub_account_name = from_account.user.user_id or to_account.user.user_id
-        type_ = self._define_transfer_type(from_account, to_account)
+        type_ = define_transfer_type(from_account, to_account)
         data = (
             dict(
                 ccy=asset.coin.symbol,
@@ -280,11 +277,11 @@ class OKX(CEX):
         _, data = await self.post(
             f"asset{between_sub_accounts}/transfer", data=str(data)
         )
-        log = f"{asset} {self._define_path_for_log(from_account, to_account, type_)}"
+        log = f"{asset} {define_path_for_log(from_account, to_account, type_)}"
         if not data["msg"]:
-            logger.debug(f"{self.log_info} | Transferred {log}")
+            logger.debug(f"{self} | Transferred {log}")
         else:
-            logger.warning(f"{self.log_info} | Couldn't transfer {log}. {data}")
+            logger.warning(f"{self} | Couldn't transfer {log}. {data}")
 
     async def withdraw(
         self,
@@ -305,9 +302,9 @@ class OKX(CEX):
         )
         if asset_to_withdraw < token_amount:
             logger.warning(
-                f"{self.log_info} | Not enough balance on OKX. {token_amount} > {asset_to_withdraw}"
+                f"{self} | Not enough balance on OKX. {token_amount} > {asset_to_withdraw}"
             )
-            return
+            return None
         wis: list[WithdrawInfo] = await self.get_withdrawal_info(
             asset_to_withdraw.coin, internal
         )
@@ -319,18 +316,18 @@ class OKX(CEX):
             if wi.internal == internal and wi.chain == chain:
                 if not wi.minimum_withdrawal <= amount <= wi.maximum_withdrawal:
                     logger.warning(
-                        f"{self.log_info} | {chain} | Withdraw of {token_amount} does not meet the range of minimum - "
+                        f"{self} | {chain} | Withdraw of {token_amount} does not meet the range of minimum - "
                         f"{wi.minimum_withdrawal} and maximum - {wi.maximum_withdrawal} withdrawals"
                     )
-                    return
+                    return None
                 fee_in_usd = wi.fee * wi.coin.price
                 if fee_in_usd > max_fee_in_usd:
                     logger.warning(
-                        f"{self.log_info} | {chain} | Withdraw of {token_amount} takes too much fee - {fee_in_usd:.2f}$"
+                        f"{self} | {chain} | Withdraw of {token_amount} takes too much fee - {fee_in_usd:.2f}$"
                     )
-                    return
+                    return None
                 logger.info(
-                    f"{self.log_info} | Trying to withdraw {token_amount} to {address}. {wi}"
+                    f"{self} | Trying to withdraw {token_amount} to {address}. {wi}"
                 )
                 data = dict(
                     ccy=coin.symbol,
@@ -343,17 +340,17 @@ class OKX(CEX):
                 _, data = await self.post("asset/withdrawal", data=str(data))
                 if not data["msg"]:
                     logger.debug(
-                        f"{self.log_info} | Withdrawal ID - {data['data'][0]['wdId']}"
+                        f"{self} | Withdrawal ID - {data['data'][0]['wdId']}"
                     )
                 else:
-                    logger.warning(f"{self.log_info} | {address} ({chain}) | {data}")
-                    return
+                    logger.warning(f"{self} | {address} ({chain}) | {data}")
+                    return None
                 return fee_in_usd
         logger.warning(
-            f"{self.log_info} | Can't withdraw {token_amount}"
+            f"{self} | Can't withdraw {token_amount}"
             + (f" to {token_amount.token.chain}" if not internal else "")
         )
-        return
+        return None
 
     async def get_withdrawal_info(
         self, coin: str | Coin = "ETH", internal: bool = False
@@ -381,118 +378,119 @@ class OKX(CEX):
 
     async def get_all_supported_coins_info(self): ...
 
-    class Websocket:
-        URL = "wss://ws.okx.com:8443/ws/v5/business"
-
-        def __init__(self):
-            self.ws = None
-            self.okx_api = OKX()
-
-        async def __aenter__(self):
-            self.ws = websockets.connect(self.URL)
-            return self
-
-        async def __aexit__(self, exc_type, exc_val, exc_tb):
-            if exc_type:
-                if isinstance(exc_val, asyncio.CancelledError):
-                    logger.debug(
-                        f"Connection was cancelled | {datetime.now().isoformat()}"
-                    )
-                else:
-                    logger.error(f"Exception in context: {exc_type}, {exc_val}")
-            if self.ws:
-                await self.ws.__aexit__(exc_type, exc_val, exc_tb)
-
-        @staticmethod
-        def sign() -> dict:
-            ts = str(int(datetime.now().timestamp()))
-            args = dict(
-                apiKey=OKXAPICreds.KEY, passphrase=OKXAPICreds.passphrase, timestamp=ts
-            )
-            sign = ts + "GET" + "/users/self/verify"
-            mac = hmac.new(
-                bytes(OKXAPICreds.SECRET, encoding="utf8"),
-                bytes(sign, encoding="utf-8"),
-                digestmod="sha256",
-            )
-            args["sign"] = base64.b64encode(mac.digest()).decode(encoding="utf-8")
-            return args
-
-        @staticmethod
-        async def send(ws, op: str, args: list):
-            subs = dict(op=op, args=args)
-            await ws.send(json.dumps(subs))
-
-        async def start(self):
-            async for ws in self.ws:
-                try:
-                    logger.debug(
-                        f"Connected to {self.URL} {datetime.now().isoformat()}"
-                    )
-                    await self.send(ws, "login", [self.sign()])
-                    async for msg_string in ws:
-                        await self.handle_message(ws, msg_string)
-                    logger.debug("Connection finished" + datetime.now().isoformat())
-                except (websockets.ConnectionClosed, websockets.ConnectionClosedError):
-                    await asyncio.sleep(5)
-                    continue
-
-        async def handle_message(self, ws, msg_string: str):
-            try:
-                m = json.loads(msg_string)
-                event = m.get("event")
-                data = m.get("data")
-                if event == "error":
-                    logger.warning("Error ", msg_string)
-                elif event in ["subscribe", "unsubscribe"]:
-                    logger.debug("subscribe/unsubscribe ", msg_string)
-                elif event == "login":
-                    logger.debug("Logged in")
-                    await self.send(ws, "subscribe", [dict(channel="deposit-info")])
-                elif data:
-                    data = data[0]
-                    state = int(data.get("state"))
-                    amount = data.get("amount")
-                    asset = data.get("ccy")
-                    sub_name = data.get("subAcct")
-                    match state:
-                        case 0 | 1:
-                            logger.info(data)
-                            if sub_name:
-                                await self.transfer_from_sub(sub_name, asset, amount)
-                        case 2:
-                            logger.success(
-                                f"{amount} {asset} deposit to {f'{sub_name} sub' or 'master'} completed"
-                            )
-                        case _:
-                            logger.warning(data)
-            except Exception as e:
-                logger.warning(e)
-
-        async def transfer_from_sub(
-            self, sub_name: str, asset: str, amount: str
-        ) -> None:
-            loop = asyncio.get_event_loop()
-            with ThreadPoolExecutor() as pool:
-                await loop.run_in_executor(
-                    pool,
-                    self.okx_api.transfer,
-                    (
-                        self.okx_api.Funding(SubAccountAPI(**OKX.KWARGS), sub_name),
-                        self.okx_api.funding,
-                        asset,
-                        amount,
-                    ),
-                )
+    # FIXME
+    # class Websocket:
+    #     URL = "wss://ws.okx.com:8443/ws/v5/business"
+    #
+    #     def __init__(self):
+    #         self.ws = None
+    #         self.okx_api = OKX()
+    #
+    #     async def __aenter__(self):
+    #         self.ws = websockets.connect(self.URL)
+    #         return self
+    #
+    #     async def __aexit__(self, exc_type, exc_val, exc_tb):
+    #         if exc_type:
+    #             if isinstance(exc_val, asyncio.CancelledError):
+    #                 logger.debug(
+    #                     f"Connection was cancelled | {datetime.now().isoformat()}"
+    #                 )
+    #             else:
+    #                 logger.error(f"Exception in context: {exc_type}, {exc_val}")
+    #         if self.ws:
+    #             await self.ws.__aexit__(exc_type, exc_val, exc_tb)
+    #
+    #     @staticmethod
+    #     def sign() -> dict:
+    #         ts = str(int(datetime.now().timestamp()))
+    #         args = dict(
+    #             apiKey=OKXAPICreds.KEY, passphrase=OKXAPICreds.passphrase, timestamp=ts
+    #         )
+    #         sign = ts + "GET" + "/users/self/verify"
+    #         mac = hmac.new(
+    #             bytes(OKXAPICreds.SECRET, encoding="utf8"),
+    #             bytes(sign, encoding="utf-8"),
+    #             digestmod="sha256",
+    #         )
+    #         args["sign"] = base64.b64encode(mac.digest()).decode(encoding="utf-8")
+    #         return args
+    #
+    #     @staticmethod
+    #     async def send(ws, op: str, args: list):
+    #         subs = dict(op=op, args=args)
+    #         await ws.send(json.dumps(subs))
+    #
+    #     async def start(self):
+    #         async for ws in self.ws:
+    #             try:
+    #                 logger.debug(
+    #                     f"Connected to {self.URL} {datetime.now().isoformat()}"
+    #                 )
+    #                 await self.send(ws, "login", [self.sign()])
+    #                 async for msg_string in ws:
+    #                     await self.handle_message(ws, msg_string)
+    #                 logger.debug("Connection finished" + datetime.now().isoformat())
+    #             except (websockets.ConnectionClosed, websockets.ConnectionClosedError):
+    #                 await asyncio.sleep(5)
+    #                 continue
+    #
+    #     async def handle_message(self, ws, msg_string: str):
+    #         try:
+    #             m = json.loads(msg_string)
+    #             event = m.get("event")
+    #             data = m.get("data")
+    #             if event == "error":
+    #                 logger.warning("Error ", msg_string)
+    #             elif event in ["subscribe", "unsubscribe"]:
+    #                 logger.debug("subscribe/unsubscribe ", msg_string)
+    #             elif event == "login":
+    #                 logger.debug("Logged in")
+    #                 await self.send(ws, "subscribe", [dict(channel="deposit-info")])
+    #             elif data:
+    #                 data = data[0]
+    #                 state = int(data.get("state"))
+    #                 amount = data.get("amount")
+    #                 asset = data.get("ccy")
+    #                 sub_name = data.get("subAcct")
+    #                 match state:
+    #                     case 0 | 1:
+    #                         logger.info(data)
+    #                         if sub_name:
+    #                             await self.transfer_from_sub(sub_name, asset, amount)
+    #                     case 2:
+    #                         logger.success(
+    #                             f"{amount} {asset} deposit to {f'{sub_name} sub' or 'master'} completed"
+    #                         )
+    #                     case _:
+    #                         logger.warning(data)
+    #         except Exception as e:
+    #             logger.warning(e)
+    #
+    #     async def transfer_from_sub(
+    #         self, sub_name: str, asset: str, amount: str
+    #     ) -> None:
+    #         loop = asyncio.get_event_loop()
+    #         with ThreadPoolExecutor() as pool:
+    #             await loop.run_in_executor(
+    #                 pool,
+    #                 self.okx_api.transfer,
+    #                 (
+    #                     self.okx_api.Funding(SubAccountAPI(**OKX.KWARGS), sub_name),
+    #                     self.okx_api.funding,
+    #                     asset,
+    #                     amount,
+    #                 ),
+    #             )
 
 
 # Получение уведомления о поступлении
 # Если средства поступили на субаккаунт, перевести на мейн funding
 # Вывод с funding на кошелек
 # FIXME
-async def start_websocket():
-    async with OKX.Websocket() as ws:
-        await ws.start()
+# async def start_websocket():
+#     async with OKX.Websocket() as ws:
+#         await ws.start()
 
 
 async def start():

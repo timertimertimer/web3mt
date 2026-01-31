@@ -19,7 +19,7 @@ class Bungee(Bridge):
         )
         if not data['success']:
             logger.warning(f'{self.evm_client.log_info} | Skipping Bungee refuel. {data["result"]}')
-            return
+            return None
         data = data['result']
         bridge_info.bridge_fee = TokenAmount(data['destinationFee'], True, bridge_info.token_amount_in.token)
         bridge_info.token_amount_out = TokenAmount(

@@ -1220,7 +1220,7 @@ class LineaPark(ProfileClient):
                     )
                 except (TypeError, RequestsError):
                     logger.warning(f'{self.profile.id} | {self.account.address} | {name} couldn\'t mint')
-                    return
+                    return None
                 message = data['message']
                 signature = data['signature']
                 nonce = data['nonce']

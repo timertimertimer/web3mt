@@ -40,11 +40,12 @@ class CoinGecko(curl_cffiAsyncSession):
 
     async def get_brief_coin_data(
             self, coin: Coin = Coin('ETH'), include_contracts_in_response: bool = True
-    ) -> dict:
+    ) -> dict | None:
         """Returns id, symbol, name + contract addresses, if include_contracts_in_response=True"""
         for _coin in await self._get_coins_list(include_contracts_in_response):
             if _coin.get('symbol') == coin.symbol.lower() and _coin.get('name') == coin.name:
                 return _coin
+        return None
 
     async def _get_coin_data_by_id(self, coin_id: str = 'ethereum'):
         return (await self.get(self.URL + f'coins/{coin_id.lower()}'))[1]

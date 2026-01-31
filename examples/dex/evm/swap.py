@@ -4,14 +4,14 @@ from web3db import Profile, DBHelper
 
 from web3mt.config import env
 from web3mt.dex.uniswap.uniswap import Uniswap
-from web3mt.onchain.evm.models import Arbitrum, Token, TokenAmount, ARB_WETH
+from web3mt.onchain.evm.models import Arbitrum, Token, TokenAmount, ARBITRUM_TOKENS
 
 
 async def uniswap(profile: Profile):
     u = Uniswap(profile=profile)
     u.evm_client.chain = Arbitrum
     TIAN = Token(u.evm_client.chain, address='0xD56734d7f9979dD94FAE3d67C7e928234e71cD4C')
-    await ARB_WETH.get_token_info()
+    await ARBITRUM_TOKENS["WETH"].get_token_info()
     token_out = u.evm_client.chain.native_token
     token_in = TIAN
     # token_amount_in = TokenAmount(0.001, token=token_in)

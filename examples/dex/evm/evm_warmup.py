@@ -119,6 +119,7 @@ class Warmup(DEX):
                 logger.success(f'{self.evm_client.account.address} | Warmed for {self.total_fee:.2f}$, GG')
                 return self.total_fee
         logger.warning(f'Tried 5 times. Sorry, unluck :(')
+        return None
 
     async def deposit_to_okx(self):
         return await self.evm_client.tx(
@@ -146,7 +147,7 @@ class Warmup(DEX):
         evm_balance = await self.evm_client.balance_of(token=token_amount.token)
         fee_in_usd = await self.okx.withdraw(self.evm_client.account.address, token_amount, max_fee_in_usd)
         if not fee_in_usd:
-            return
+            return None
         await self.wait_for_chain_arrival(evm_balance, token_amount)
         return fee_in_usd
 
@@ -161,7 +162,7 @@ class Warmup(DEX):
         self.evm_client.chain = token_amount_in.token.chain
         bridge_info = await self.execute_bridge(token_amount_in, token_out)
         if not bridge_info:
-            return
+            return None
         if wait_for_arrival:
             await self.wait_for_chain_arrival(
                 destination_token_balance_before_bridge, bridge_info.token_amount_out - bridge_info.bridge_fee
@@ -216,7 +217,7 @@ class Warmup(DEX):
         ])
         bridges_info = [el for el in bridges_info if el]
         if not bridges_info:
-            return
+            return None
 
         cheapest_bridge: BridgeInfo = min(bridges_info, key=lambda x: x.bridge_fee)
         logger.info(f'Cheapest bridge - {cheapest_bridge.name}')
@@ -283,6 +284,7 @@ async def check_nonce(profile: Profile) -> Profile | None:
     nonce = await client.nonce()
     if nonce == 0:
         return profile
+    return None
 
 
 async def get_profiles_without_nonce(profiles: list[Profile]) -> list[Profile]:
