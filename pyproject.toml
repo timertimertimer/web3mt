@@ -3,7 +3,7 @@ name = "web3mt"
 version = "0.1.20"
 description = "Web3 multitool"
 authors = [{ name = "timertimertimer", email = "timerkhan2002@gmail.com" }]
-requires-python = "~=3.11"
+requires-python = "~=3.14"
 dependencies = [
     "web3db",
     "web3>=7.1.0,<8",
@@ -18,7 +18,7 @@ dependencies = [
     "aptos-sdk>=0.8.6",
     "solders>=0.23.0",
     "eth-account>=0.13.7",
-    "tronpy>=0.5.0",
+    "tronpy>=0.6.2",
     "bitcoinlib>=0.7.4",
     "pydantic-settings>=2.9.1",
     "bip-utils>=2.9.3",
@@ -55,7 +55,7 @@ dev = [
 ]
 
 [tool.uv.sources]
-web3db = { git = "https://github.com/timertimertimer/web3db.git" }
+web3db = { path = "../web3db", editable = true }
 
 [tool.hatch.build.targets.sdist]
 include = ["web3mt"]

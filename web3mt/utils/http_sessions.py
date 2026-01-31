@@ -1,13 +1,15 @@
 import asyncio
 from abc import ABC
 from json import JSONDecodeError
+from pyexpat.errors import messages
 from typing import Callable, Any, TYPE_CHECKING, Optional
 from urllib.parse import urlencode
 
+from pydantic import BaseModel
 from better_proxy import Proxy
 from curl_cffi import CurlMime
 from curl_cffi.requests import AsyncSession, RequestsError, Response, BrowserType
-from httpx import AsyncClient
+from httpx import AsyncClient, ReadTimeout
 
 if TYPE_CHECKING:
     from web3db.models import Profile
@@ -17,16 +19,21 @@ from web3mt.utils import logger, sleep, set_windows_event_loop_policy
 set_windows_event_loop_policy()
 
 
+class HTTPException(BaseModel):
+    message: str
+    code: Optional[str] = None
+
+
 class SessionConfig:
     def __init__(
-        self,
-        log_info: str = "Main",
-        sleep_after_request: bool = False,
-        sleep_range: tuple = (5, 10),
-        sleep_echo: bool = False,
-        requests_echo: bool = DEV,
-        retry_count: int = env.retry_count,
-        try_with_default_proxy: bool = False,
+            self,
+            log_info: str = "Main",
+            sleep_after_request: bool = False,
+            sleep_range: tuple = (5, 10),
+            sleep_echo: bool = False,
+            requests_echo: bool = DEV,
+            retry_count: int = env.retry_count,
+            try_with_default_proxy: bool = False,
     ):
         self.log_info = log_info
         self.sleep_after_request = sleep_after_request
@@ -38,9 +45,9 @@ class SessionConfig:
 
     def __repr__(self):
         return (
-            f"SessionConfig("
-            + ", ".join([f"{key}={value}" for key, value in vars(self).items()])
-            + ")"
+                f"SessionConfig("
+                + ", ".join([f"{key}={value}" for key, value in vars(self).items()])
+                + ")"
         )
 
 
@@ -51,21 +58,21 @@ class BaseAsyncSession(ABC):
         "Accept-Language": "en-US,en",
         "Connection": "keep-alive",
         "Sec-Ch-Ua": f'"Not_A Brand";v="8", "Chromium";v="{_google_chrome_stable_version}", '
-        f'"Google Chrome";v="{_google_chrome_stable_version}"',
+                     f'"Google Chrome";v="{_google_chrome_stable_version}"',
         "Sec-Ch-Ua-Platform": '"Windows"',
         "Sec-Ch-Ua-Mobile": "?0",
         "Sec-Fetch-Dest": "empty",
         "Sec-Fetch-Mode": "cors",
         "Sec-Fetch-Site": "same-origin",
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) "
-        f"Chrome/{_google_chrome_stable_version}.0.0.0 Safari/537.36",
+                      f"Chrome/{_google_chrome_stable_version}.0.0.0 Safari/537.36",
     }
 
     def __init__(
-        self,
-        proxy: str | None = env.default_proxy,
-        config: SessionConfig | None = None,
-        **kwargs,
+            self,
+            proxy: str | None = env.default_proxy,
+            config: SessionConfig | None = None,
+            **kwargs,
     ) -> None:
         self.config = config or SessionConfig()
         self._headers = self.DEFAULT_HEADERS | kwargs.pop("headers", {})
@@ -113,14 +120,13 @@ class BaseAsyncSession(ABC):
         return await self.make_request("OPTIONS", *a, **kw)
 
     async def parse_exception(
-        self,
-        i: int,
-        request_info: str,
-        response: Optional,
-        response_data,
-        exception: type[Exception],
-        retry_delay: tuple[int, int],
-    ):
+            self,
+            i: int,
+            request_info: str,
+            response: Optional,
+            response_data: Any,
+            exception: type[Exception],
+    ) -> Optional[HTTPException]:
         raise NotImplementedError("Must be implemented by subclasses")
 
     def retry_request(func: Callable) -> Callable:
@@ -141,7 +147,7 @@ class BaseAsyncSession(ABC):
                     response = None
                     response, response_data = await func(self, *args, **kwargs)
                     if not kwargs.get("follow_redirects") or kwargs.get(
-                        "allow_redirects"
+                            "allow_redirects"
                     ):
                         response.raise_for_status()
                     if self.config.sleep_after_request:
@@ -151,16 +157,22 @@ class BaseAsyncSession(ABC):
                             echo=self.config.sleep_echo,
                         )
                     return response, response_data
-                except Exception as exception:
-                    await self.parse_exception(
+                except Exception as e:
+                    exception = await self.parse_exception(
                         i=i,
                         request_info=request_info,
                         response=response,
                         response_data=response_data,
-                        exception=exception,
-                        retry_delay=retry_delay,
+                        exception=e,
                     )
-                    continue
+                logger.warning(
+                    f"{self.config.log_info} | {exception.message}. Retrying {i + 1} after {retry_delay} seconds"
+                )
+                await sleep(
+                    *retry_delay,
+                    log_info=self.config.log_info,
+                    echo=self.config.sleep_echo,
+                )
             else:
                 error_message = f"Tried to retry {self.config.retry_count} times"
                 if self.config.requests_echo:
@@ -179,9 +191,9 @@ class BaseAsyncSession(ABC):
         ].split(".")[0]
         new_headers = {
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) "
-            f"Chrome/{BaseAsyncSession._google_chrome_stable_version}.0.0.0 Safari/537.36",
+                          f"Chrome/{BaseAsyncSession._google_chrome_stable_version}.0.0.0 Safari/537.36",
             "Sec-Ch-Ua": f'"Not_A Brand";v="8", "Chromium";v="{BaseAsyncSession._google_chrome_stable_version}", '
-            f'"Google Chrome";v="{BaseAsyncSession._google_chrome_stable_version}"',
+                         f'"Google Chrome";v="{BaseAsyncSession._google_chrome_stable_version}"',
         }
         BaseAsyncSession.DEFAULT_HEADERS.update(new_headers)
         self.headers.update(new_headers)
@@ -201,7 +213,7 @@ class BaseAsyncSession(ABC):
         return None
 
     async def get_proxy_location(
-        self, host: str = None, proxy: str = env.default_proxy
+            self, host: str = None, proxy: str = env.default_proxy
     ) -> tuple[str, str]:
         host = host or Proxy.from_str(self.proxy or proxy).host
         _, data = await self.get("https://api.iplocation.net/", params=dict(ip=host))
@@ -212,10 +224,7 @@ class BaseAsyncSession(ABC):
 
 
 class curl_cffiAsyncSession(BaseAsyncSession, AsyncSession):
-    def __init__(
-        self,
-        **kwargs,
-    ) -> None:
+    def __init__(self, **kwargs) -> None:
         BaseAsyncSession.__init__(self, **kwargs)
         impersonate = kwargs.pop("impersonate", BrowserType.chrome120)
         kwargs.pop("config", None)
@@ -244,49 +253,41 @@ class curl_cffiAsyncSession(BaseAsyncSession, AsyncSession):
         self.proxies["all"] = self.proxy.as_url
 
     async def parse_exception(
-        self,
-        i: int,
-        request_info: str,
-        response: Optional,
-        response_data,
-        exception: RequestsError,
-        retry_delay: tuple[float, float],
-    ):
+            self,
+            i: int,
+            request_info: str,
+            response: Optional,
+            response_data: Any,
+            exception: RequestsError,
+    ) -> Optional[HTTPException]:
         response = response or exception.response
-        s = f"{request_info=} {exception=}" + (
+        message = f"{request_info=} {exception=}" + (
             f"\n{response_data=}" if response_data else ""
         )
         if exception.code in (28, 55, 56):
             pass
         elif exception.code == 7 and self.config.try_with_default_proxy:
             self.proxy = env.default_proxy
-            s += " Trying with default proxy"
+            message += "\nChanged proxy"
         elif not response or 600 >= response.status_code >= 400:
-            raise RequestsError(s)
-        logger.warning(
-            f"{self.config.log_info} | {s}. Retrying {i + 1} after {retry_delay} seconds"
-        )
-        await sleep(
-            *retry_delay,
-            log_info=self.config.log_info,
-            echo=self.config.sleep_echo,
-        )
+            raise RequestsError(message)
+        return HTTPException(message=message)
 
     @BaseAsyncSession.retry_request
     async def make_request(
-        self,
-        method: str,
-        url: str,
-        params: dict = None,
-        headers: dict = None,
-        cookies: dict = None,
-        data: dict | str = None,
-        json: dict = None,
-        multipart: Optional[CurlMime] = None,
-        follow_redirects: bool = False,
-        verify: bool = False,
-        retry_count: int = env.retry_count,
-        timeout: int = 30,
+            self,
+            method: str,
+            url: str,
+            params: dict = None,
+            headers: dict = None,
+            cookies: dict = None,
+            data: dict | str = None,
+            json: dict = None,
+            multipart: Optional[CurlMime] = None,
+            follow_redirects: bool = False,
+            verify: bool = False,
+            retry_count: int = env.retry_count,
+            timeout: int = 30,
     ) -> tuple[Response, dict]:
         try:
             response = await super().request(
@@ -310,8 +311,8 @@ class curl_cffiAsyncSession(BaseAsyncSession, AsyncSession):
 
 class httpxAsyncClient(BaseAsyncSession, AsyncClient):
     def __init__(
-        self,
-        **kwargs,
+            self,
+            **kwargs,
     ) -> None:
         BaseAsyncSession.__init__(self, **kwargs)
         kwargs.pop("config", None)
@@ -324,30 +325,37 @@ class httpxAsyncClient(BaseAsyncSession, AsyncClient):
         )
 
     async def parse_exception(
-        self,
-        i,
-        request_info: str,
-        response: Optional,
-        response_data,
-        exception,
-        retry_delay,
+            self,
+            i,
+            request_info: str,
+            response: Optional,
+            response_data: Any,
+            exception,
     ):
-        raise NotImplementedError  # TODO: possible exceptions - ReadTimeout (proxy not working), ProxyError('407 Proxy Authentication Required')
+        message = f"{request_info=} {exception=}" + (
+            f"\n{response_data=}" if response_data else ""
+        )
+        match exception: # TODO: possible exceptions ProxyError('407 Proxy Authentication Required')
+            case ReadTimeout():
+                message += "\nRequest timed out"
+            case ProxyError():
+                message += "\nProxy error. " + ' '.join(exception.args)
+        return HTTPException(message=message)
 
     @BaseAsyncSession.retry_request
     async def make_request(
-        self,
-        method: str,
-        url: str,
-        params: dict = None,
-        headers: dict = None,
-        cookies: dict = None,
-        data: dict | str = None,
-        json: dict = None,
-        follow_redirects: bool = False,
-        retry_count: int = env.retry_count,
-        timeout: int = 30,
-        # `verify` argument in httpx lib works only on client, will not work each request, so to use `verify` you need to create a new client
+            self,
+            method: str,
+            url: str,
+            params: dict = None,
+            headers: dict = None,
+            cookies: dict = None,
+            data: dict | str = None,
+            json: dict = None,
+            follow_redirects: bool = False,
+            retry_count: int = env.retry_count,
+            timeout: int = 30,
+            # `verify` argument in httpx lib works only on client, will not work each request, so to use `verify` you need to create a new client
     ) -> tuple[Response, dict]:
         try:
             response = await super().request(
@@ -369,7 +377,7 @@ class httpxAsyncClient(BaseAsyncSession, AsyncClient):
 
 class Profilecurl_cffiAsyncSession(curl_cffiAsyncSession):
     def __init__(
-        self, profile: "Profile", config: SessionConfig = None, **kwargs
+            self, profile: "Profile", config: SessionConfig = None, **kwargs
     ) -> None:
         config = config or SessionConfig()
         config.log_info = str(profile.id)
@@ -382,7 +390,7 @@ class Profilecurl_cffiAsyncSession(curl_cffiAsyncSession):
 
 class ProfilehttpxAsyncClient(httpxAsyncClient):
     def __init__(
-        self, profile: "Profile", config: SessionConfig = None, **kwargs
+            self, profile: "Profile", config: SessionConfig = None, **kwargs
     ) -> None:
         self.profile = profile
         config = config or SessionConfig()

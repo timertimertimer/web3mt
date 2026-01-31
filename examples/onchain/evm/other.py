@@ -75,7 +75,7 @@ async def _get_balance_multicall(
             try:
                 balances = await batch.async_execute()
             except Web3RPCError as exception:
-                logger.warning(f"{chain} | {exception=}")
+                logger.warning(f"{chain} {chain.rpc} | {exception=}")
                 balances = [0] * batch_size
             except (TimeoutError, BadResponseFormat) as exception:
                 logger.warning(f"{chain} | {type(exception)=}, {exception=}")
