@@ -74,12 +74,9 @@ async def _get_balance_multicall(
                     batch.add(contract.functions.balanceOf(profile.evm_address).call())
             try:
                 balances = await batch.async_execute()
-            except Web3RPCError as exception:
-                logger.warning(f"{chain} {chain.rpc} | {exception=}")
+            except Exception as exception:
+                logger.warning(f"{chain} {chain.rpc} | {type(exception)}, {exception}")
                 balances = [0] * batch_size
-            except (TimeoutError, BadResponseFormat) as exception:
-                logger.warning(f"{chain} | {type(exception)=}, {exception=}")
-                pass
         all_balances += balances
     for balance, profile in zip(all_balances, profiles):
         token_amount = TokenAmount(balance, is_wei=True, token=token)
