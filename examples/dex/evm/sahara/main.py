@@ -53,7 +53,7 @@ async def do_tasks(account: SaharaAccount, more_than_one_accounts: bool):
             await sleep(*(start_delay_random_range), log_info=f'{account}', echo=True)
         async with SaharaClient(account, use_rotating_proxy_for_gpt=False) as client:
             if not client:
-                return
+                return None
             await client.do_tasks()
             return client.sp
 

@@ -4,7 +4,7 @@ import pickle
 import random
 import re
 import uuid
-from datetime import datetime
+from datetime import datetime, UTC
 from random import choice
 from bs4 import BeautifulSoup
 from pathlib import Path
@@ -128,7 +128,7 @@ class Ozon(curl_cffiAsyncSession):
                 logger.warning(f'{self.config.log_info} | {e}')
 
     async def generate_cookies(self):
-        timestamp = datetime.utcnow().isoformat(timespec='milliseconds') + 'Z'
+        timestamp = datetime.now(UTC).isoformat(timespec='milliseconds') + 'Z'
         data = [
             {"sdk": {
                 "name": "sentry.cocoa", "version": "8.30.0",
@@ -223,7 +223,7 @@ class Ozon(curl_cffiAsyncSession):
         link = None
         while self.count < total:
             if not links:
-                links = set(await self.home())
+                links = set((await self.home()))
             link = await self.move_to_product(link or links.pop())
         logger.success(f'{self.config.log_info} | Ананасы собраны')
         await self.count_pineapples()
@@ -293,7 +293,7 @@ class Ozon(curl_cffiAsyncSession):
                 _, data = await self.post(
                     f'{self.URL}/composer-api.bx/page/json/v2', params={'url': data['nextPage']}, json=self.DEVICE_DATA
                 )
-        return
+        return None
 
     async def test_try_buy(self):
         need_to_add = await self.check_cart(some_products)
@@ -371,8 +371,7 @@ class Ozon(curl_cffiAsyncSession):
             if not data['error']:
                 logger.success(f'{self.config.log_info} | {data}')
                 return
-        self.update_proxy(choice(proxies))
-
+        self.proxy = choice(proxies)
 
 async def main():
     data = list(zip(list((Path.cwd() / 'data' / 'cookies').iterdir()), proxies))

@@ -15,7 +15,7 @@ from web3mt.dex.models import DEX
 from web3mt.onchain.evm.client import ProfileClient
 from web3mt.onchain.evm.models import TokenAmount, Base, Arbitrum, Optimism, Token, Linea, Zora, zkSync
 from web3mt.utils import FileManager, sleep, logger
-from web3mt.utils.http_sessions import SessionConfig, RETRY_COUNT, curl_cffiAsyncSession
+from web3mt.utils.http_sessions import SessionConfig, curl_cffiAsyncSession
 from web3mt.utils.db import update_shared_proxies
 
 nfts = {
@@ -78,6 +78,7 @@ class Basehunt(DEX):
         )
 
     async def spin(self):
+        data = None
         try:
             _, data = await self.http_session.post(
                 f'{self.API}/spin-the-wheel/execute',
@@ -135,6 +136,7 @@ class Basehunt(DEX):
             for _ in range(5):
                 if await self.complete('ocsChallenge_b3f47fc6-3649-4bad-9e10-7244fbe1d484'):
                     break
+        return None
 
     async def fund(self):
         routes = []
@@ -192,7 +194,8 @@ class Basehunt(DEX):
         return data['success']
 
     async def state(self):
-        for _ in range(RETRY_COUNT):
+        data = None
+        for _ in range(env.retry_count):
             try:
                 _, data = await self.http_session.get(
                     f'{self.API}/profile/state',
@@ -253,7 +256,7 @@ Not Before: {invalid_before}'''
             )
             data.pop('resources')
             data.pop('uri')
-            for i in range(RETRY_COUNT):
+            for i in range(env.retry_count):
                 try:
                     _, data = await self.http_session.post(
                         'https://www.standwithcrypto.org/action/sign-up',

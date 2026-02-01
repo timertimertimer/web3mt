@@ -1,7 +1,7 @@
 import asyncio
 from abc import ABC
+from curses import wrapper
 from json import JSONDecodeError
-from pyexpat.errors import messages
 from typing import Callable, Any, TYPE_CHECKING, Optional
 from urllib.parse import urlencode
 
@@ -9,7 +9,7 @@ from pydantic import BaseModel
 from better_proxy import Proxy
 from curl_cffi import CurlMime
 from curl_cffi.requests import AsyncSession, RequestsError, Response, BrowserType
-from httpx import AsyncClient, ReadTimeout
+from httpx import AsyncClient, ReadTimeout, ProxyError
 
 if TYPE_CHECKING:
     from web3db.models import Profile

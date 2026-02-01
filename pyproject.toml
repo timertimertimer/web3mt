@@ -52,6 +52,7 @@ dev = [
     "monero>=1.1.1",
     "pre-commit>=4.2.0",
     "redis>=6.2.0",
+    "beautifulsoup4>=4.14.3"
 ]
 
 [tool.uv.sources]

@@ -51,8 +51,7 @@ class Cysic(DEX):
             return data
         elif data['msg'] == 'not in list':
             logger.warning(f'{self} | Not registered')
-        else:
-            pass
+        return None
 
     async def check_code(self, code: str) -> bool:
         _, data = await self.http_session.get(f'{self.API_URL}/referral/check/{code}')
@@ -79,18 +78,19 @@ class Cysic(DEX):
         if data['msg'] == 'success':
             logger.success(f'{self} | Uploaded "{name}"')
             return data['data']
+        return None
 
     async def register(self, code: str = None):
         profile_data = await self.profile()
         if not profile_data:
             if not code:
                 logger.warning(f'{self} | Need code')
-                return
+                return None
             if not await self.bind(code):
-                return
+                return None
         if profile_data and profile_data.get('name'):
             logger.success(f'{self} | Already registered')
-            return
+            return None
         image = await self.upload()
         username = fake.profile(['username'])['username'][:12]
         logo = f'https://api-testnet.prover.xyz{image}'
@@ -128,8 +128,8 @@ class Cysic(DEX):
         _, data = await self.http_session.get(f'{self.API_URL}/myPage/faucet/{address}/latestRecord')
         if data['msg'] == 'success':
             return data['data']
-        else:
-            logger.warning(f'{self} | {data}')
+        logger.warning(f'{self} | {data}')
+        return None
 
     async def claim_faucet(self):
         profile_data = await self.profile()

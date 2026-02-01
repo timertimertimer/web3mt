@@ -32,7 +32,7 @@ class Checker:
             params={"user": self.client.account.address.lower()},
         )
         if not data:
-            return
+            return None
         data = data[0]
         return data["rank_xp"], data["xp"], data["rp"]
 

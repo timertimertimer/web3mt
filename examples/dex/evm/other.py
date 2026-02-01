@@ -17,7 +17,7 @@ main_chains = [Ethereum, Scroll, zkSync, Base, Zora, Optimism, Arbitrum]
 
 async def opbnb_bridge(profile: Profile, amount: float = 0.002):
     if await have_balance(ProfileClient(chain=opBNB, profile=profile)):
-        return
+        return None
     client = ProfileClient(chain=BSC, profile=profile)
     contract_address = '0xF05F0e4362859c3331Cb9395CBC201E3Fa6757Ea'
     client.default_abi = abis['opbnb_bridge']

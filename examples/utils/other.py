@@ -11,6 +11,7 @@ def format_time_strftime(func):
         t = func(*args, **kwargs)
         if t:
             return t.strftime('%Y-%m-%d %H:%M:%S')
+        return None
 
     return wrapper
 

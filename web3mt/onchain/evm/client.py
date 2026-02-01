@@ -26,7 +26,7 @@ from web3mt.onchain.evm.models import *
 from web3mt.config import env, DEV
 from web3mt.utils import sleep, logger
 
-__all__ = ["TransactionParameters", "ProfileClient", "ClientConfig", "BaseClient"]
+__all__ = ["TransactionParameters", "ProfileClient", "Config", "BaseClient", "HTTPProviderConfig"]
 
 from web3mt.utils.seeds import (
     get_address_from_mnemonic_bip44,
@@ -156,8 +156,16 @@ class SleepAfterRequestMiddleware(Web3Middleware):
 
         return middleware
 
+class HTTPProviderConfig:
+    def __init__(
+            self,
+            proxy: str = env.default_proxy,
+            timeout: int = 10,
+    ):
+        self.proxy = proxy
+        self.timeout = timeout
 
-class ClientConfig:
+class Config:
     def __init__(
         self,
         delay_between_requests: int = 0,
@@ -173,16 +181,16 @@ class ClientConfig:
 
 class BaseClient:
     def __init__(
-        self,
-        account: LocalAccount = None,
-        chain: Chain = Ethereum,
-        proxy: str = env.default_proxy,
-        config: ClientConfig = ClientConfig(),
+            self,
+            account: LocalAccount = None,
+            chain: Chain = Ethereum,
+            config: Config = Config(),
+            http_provider_config: HTTPProviderConfig = HTTPProviderConfig(),
     ):
         self._chain = chain
         self.config = config
         self.account = account or Account.create()
-        self.proxy = proxy
+        self.http_provider_config = http_provider_config
 
     def __str__(self):
         return self.log_info
@@ -198,12 +206,12 @@ class BaseClient:
             logger.success(f"{self.log_info} | Tasks done")
 
     @property
-    def proxy(self) -> str:
-        return self._proxy
+    def http_provider_config(self) -> HTTPProviderConfig:
+        return self._http_provider_config
 
-    @proxy.setter
-    def proxy(self, proxy):
-        self._proxy = proxy
+    @http_provider_config.setter
+    def http_provider_config(self, http_provider_config):
+        self._http_provider_config = http_provider_config
         self._update_web3()
 
     @property
@@ -248,7 +256,7 @@ class BaseClient:
             max_priority_fee_per_gas_lst.sort()
             max_priority_fee_per_gas = max_priority_fee_per_gas_lst[
                 len(max_priority_fee_per_gas_lst) // 2
-            ]
+                ]
         return max_priority_fee_per_gas
 
     def _update_log_info(self):
@@ -263,7 +271,7 @@ class BaseClient:
         self.w3 = AsyncWeb3(
             # TODO: If rpc sends exception try to get another rpc from self._chain.rpc list
             AsyncHTTPProvider(
-                self._chain.rpc, request_kwargs={"timeout": 10, "proxy": self._proxy}
+                self._chain.rpc, request_kwargs=self.http_provider_config.__dict__
             ),
             modules={"eth": (AsyncEth,), "net": (AsyncNet,)},
             middleware=[
@@ -285,7 +293,7 @@ class BaseClient:
         return await self.w3.eth.get_transaction_count(owner_address)
 
     async def get_onchain_token_info(
-        self, contract: AsyncContract = None, token: Token = None
+            self, contract: AsyncContract = None, token: Token = None
     ) -> Token | None:
         if token == self.chain.native_token:
             logger.warning(f"{self.log_info} | Can't get native token info")
@@ -302,7 +310,7 @@ class BaseClient:
         return token
 
     async def get_allowance(
-        self, spender_contract: AsyncContract, token: Token, owner_address: str = None
+            self, spender_contract: AsyncContract, token: Token, owner_address: str = None
     ) -> TokenAmount:
         contract = self.w3.eth.contract(
             to_checksum_address(token.address), abi=DefaultABIs.token
@@ -319,13 +327,13 @@ class BaseClient:
         return token.price
 
     async def balance_of(
-        self,
-        contract: AsyncContract = None,
-        token: Token = None,
-        owner_address: str = None,
-        echo: bool = False,
-        remove_zero_from_echo: bool = True,
-        address_index: int = 0,
+            self,
+            contract: AsyncContract = None,
+            token: Token = None,
+            owner_address: str = None,
+            echo: bool = False,
+            remove_zero_from_echo: bool = True,
+            address_index: int = 0,
     ) -> TokenAmount:
         if address_index:
             get_address_from_mnemonic_bip44()
@@ -374,17 +382,17 @@ class BaseClient:
                     break
 
     async def tx(
-        self,
-        to: str,
-        name: str,
-        data: str = None,
-        value: TokenAmount = None,
-        gas_limit: int = None,
-        max_priority_fee_per_gas: int = None,
-        max_fee_per_gas: int = None,
-        use_full_balance: bool = False,
-        return_fee_in_usd: bool = False,
-        **kwargs,
+            self,
+            to: str,
+            name: str,
+            data: str = None,
+            value: TokenAmount = None,
+            gas_limit: int = None,
+            max_priority_fee_per_gas: int = None,
+            max_fee_per_gas: int = None,
+            use_full_balance: bool = False,
+            return_fee_in_usd: bool = False,
+            **kwargs,
     ) -> tuple[bool, str | Exception | HexBytes] | Decimal:
         tx_params = await self.create_tx_params(
             to=to,
@@ -404,16 +412,16 @@ class BaseClient:
         return res
 
     async def create_tx_params(
-        self,
-        to: str = None,
-        data: str = None,
-        gas_limit: int = None,
-        value: TokenAmount | int = None,
-        max_priority_fee_per_gas: int = None,
-        max_fee_per_gas: int = None,
-        use_full_balance: bool = False,
-        tx_params: TransactionParameters = None,
-        **kwargs,
+            self,
+            to: str = None,
+            data: str = None,
+            gas_limit: int = None,
+            value: TokenAmount | int = None,
+            max_priority_fee_per_gas: int = None,
+            max_fee_per_gas: int = None,
+            use_full_balance: bool = False,
+            tx_params: TransactionParameters = None,
+            **kwargs,
     ) -> TransactionParameters | tuple[bool, str]:
         nonce = kwargs.get("nonce", await self.nonce())
         value = value or TokenAmount(0, token=self.chain.native_token)
@@ -445,20 +453,20 @@ class BaseClient:
             base_fee_per_gas = latest_block.get("baseFeePerGas", 0)
             if not tx_params.max_fee_per_gas:
                 tx_params.max_fee_per_gas = (
-                    base_fee_per_gas + tx_params.max_priority_fee_per_gas
+                        base_fee_per_gas + tx_params.max_priority_fee_per_gas
                 )
         else:
             tx_params.gas_price = await self.w3.eth.gas_price
         if value.token == self.chain.native_token and use_full_balance:
             tx_params.value = (
-                await self.balance_of()
-                - tx_params.fee
-                - TokenAmount(0.0001, token=self.chain.native_token)
+                    await self.balance_of()
+                    - tx_params.fee
+                    - TokenAmount(0.0001, token=self.chain.native_token)
             )
         return tx_params
 
     async def tx_with_params(
-        self, name: str, tx_params: TransactionParameters
+            self, name: str, tx_params: TransactionParameters
     ) -> tuple[bool, Exception | HexBytes | str]:
         while True:
             ok, tx_hash_or_err = await self._send_transaction(tx_params)
@@ -477,7 +485,7 @@ class BaseClient:
         return res, tx_hash_or_err
 
     async def _send_transaction(
-        self, tx_params: TransactionParameters
+            self, tx_params: TransactionParameters
     ) -> tuple[bool, Exception | HexBytes | str]:
         while True:
             try:
@@ -501,7 +509,7 @@ class BaseClient:
                         tx_params.max_priority_fee_per_gas
                     )
                     tx_params.max_fee_per_gas = (
-                        last_block["baseFeePerGas"] + tx_params.max_priority_fee_per_gas
+                            last_block["baseFeePerGas"] + tx_params.max_priority_fee_per_gas
                     )
                 elif "overshot" in error_message:
                     overshot = TokenAmount(
@@ -569,19 +577,22 @@ class ProfileClient(BaseClient):
         profile: Profile,
         chain: Chain = Ethereum,
         encryption_password: str = env.passphrase,
-        config: ClientConfig = ClientConfig(),
+        config: Config = Config(),
     ):
         self.profile = profile
         self._encryption_password = encryption_password
-        super().__init__(
+        account = (
             Account.from_key(
                 decrypt(self.profile.evm_private, self._encryption_password)
             )
             if self.profile.evm_private.startswith("-----BEGIN PGP MESSAGE-----")
-            else Account.from_key(self.profile.evm_private),
-            chain,
-            profile.proxy.proxy_string,
-            config,
+            else Account.from_key(self.profile.evm_private)
+        )
+        super().__init__(
+            account=account,
+            chain=chain,
+            config=config,
+            http_provider_config=HTTPProviderConfig(proxy=profile.proxy.proxy_string),
         )
 
     def _update_log_info(self):
@@ -619,13 +630,13 @@ class ProfileClient(BaseClient):
         amount.token = balance.token
         if balance.wei <= 0:
             logger.warning(f"{self.log_info} | {balance}. Can't approve zero balance")
-            return
+            return None
         if not amount or amount.wei > balance.wei:
             amount = balance
         approved = await self.get_allowance(spender_contract, amount.token)
         if amount.wei <= approved.wei:
             logger.info(f"{self.log_info} | Already approved {approved}")
-            return
+            return None
         return await self.tx(
             amount.token.address,
             f"Approve {amount}",

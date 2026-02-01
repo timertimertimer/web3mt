@@ -3,6 +3,8 @@ from aptos_sdk.account_address import AccountAddress
 from aptos_sdk.bcs import Serializer
 from aptos_sdk.transactions import EntryFunction, TransactionArgument
 from web3db import Profile, DBHelper
+from web3db.core import create_db_instance
+
 from web3mt.onchain.aptos import Client
 from web3mt.onchain.aptos.models import TokenAmount
 from web3mt.utils import logger
@@ -47,7 +49,7 @@ async def mint(profile: Profile):
 
 
 async def main():
-    db = DBHelper()
+    db = create_db_instance()
     profiles = await db.get_all_from_table(Profile)
     await asyncio.gather(*[mint(profile) for profile in profiles])
 

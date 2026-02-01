@@ -59,25 +59,25 @@ class IMAPClient(IMAP4_SSL):
                     continue
                 except Exception as e:
                     logger.error(f"{self} | Failed to login to {self.email.login}: {e}")
-                    return
+                    return None
                 if res.result == 'OK':
                     break
                 elif res.result == 'NO':
                     if res[1][0] == b'AUTHENTICATE failed.':
-                        new_access_token = await self._()
+                        new_access_token = await self._update_access_token()
                         logger.info(f'{self} | Updated access token for {self.email.login}')
                         self.email.access_token = new_access_token
                     else:
                         logger.error(f"{self} | Failed to login to {self.email.login}")
-                        return
+                        return None
                 else:
                     logger.error(f"{self} | Failed to login to {self.email.login}")
-                    return
+                    return None
         else:
             res = await self.login(self.email.login, self.email.password)
             if res.result == 'NO':
                 logger.error(f"{self} | Failed to login to {self.email.login}")
-                return
+                return None
         return self
 
     async def __aexit__(self, exc_type, exc_val, exc_tb):
